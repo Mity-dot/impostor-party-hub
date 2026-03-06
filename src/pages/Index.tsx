@@ -132,18 +132,36 @@ const Index = () => {
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-center gap-3 py-4"
+        className="flex items-center justify-between px-4 py-4"
       >
-        <Skull className="w-6 h-6 text-secondary" />
-        <h1 className="text-2xl font-display font-bold text-foreground">
-          IMPOST<span className="text-secondary">O</span>R
-        </h1>
-        <span className="text-sm text-muted-foreground font-display ml-2">#{roomCode}</span>
-        {room.game_phase !== "lobby" && room.game_phase !== "category-select" && (
-          <span className="text-xs bg-muted rounded-full px-3 py-1 font-display text-muted-foreground ml-2">
-            Round {room.round_number} • {alivePlayers.length} alive
-          </span>
+        {/* Leave button - top left */}
+        {room.game_phase !== "results" && room.game_phase !== "elimination" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLeave}
+            className="text-muted-foreground hover:text-destructive text-xs"
+          >
+            Leave
+          </Button>
+        ) : (
+          <div className="w-16" />
         )}
+
+        <div className="flex items-center gap-3">
+          <Skull className="w-6 h-6 text-secondary" />
+          <h1 className="text-2xl font-display font-bold text-foreground">
+            IMPOST<span className="text-secondary">O</span>R
+          </h1>
+          <span className="text-sm text-muted-foreground font-display ml-2">#{roomCode}</span>
+          {room.game_phase !== "lobby" && room.game_phase !== "category-select" && (
+            <span className="text-xs bg-muted rounded-full px-3 py-1 font-display text-muted-foreground ml-2">
+              Round {room.round_number} • {alivePlayers.length} alive
+            </span>
+          )}
+        </div>
+
+        <div className="w-16" />
       </motion.header>
 
       {/* Elimination transition overlay */}
@@ -171,7 +189,7 @@ const Index = () => {
       </AnimatePresence>
 
       {/* Game content */}
-      <main className="flex-1 flex items-start justify-center py-4 pb-16">
+      <main className="flex-1 flex items-start justify-center py-4 pb-8">
         {room.game_phase === "lobby" && (
           <OnlineLobby
             roomCode={roomCode}
@@ -231,24 +249,6 @@ const Index = () => {
           />
         )}
       </main>
-
-      {/* Quit */}
-      {room.game_phase !== "results" && room.game_phase !== "elimination" && (
-        <motion.footer
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed bottom-4 left-0 right-0 flex justify-center"
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLeave}
-            className="text-muted-foreground hover:text-destructive text-xs"
-          >
-            Leave Room
-          </Button>
-        </motion.footer>
-      )}
     </div>
   );
 };

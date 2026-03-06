@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, Pencil, Check, Shuffle, Copy, Users, Crown, X } from "lucide-react";
+import { Play, Pencil, Check, Shuffle, Copy, Users, Crown, X, Shield } from "lucide-react";
 import { AVATAR_COLORS, AVATAR_FACES, generateUsername } from "@/lib/gameData";
 import { updatePlayerProfile, kickPlayer } from "@/lib/roomService";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ export function OnlineLobby({ roomCode, roomId, players, myPlayer, isHost, onSta
   const [editName, setEditName] = useState(myPlayer?.player_name || "");
   const [editColor, setEditColor] = useState(myPlayer?.avatar_color || "");
   const [editFace, setEditFace] = useState(myPlayer?.avatar_face || "");
+  const [showManage, setShowManage] = useState(false);
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomCode);
@@ -47,6 +48,11 @@ export function OnlineLobby({ roomCode, roomId, players, myPlayer, isHost, onSta
       avatar_face: editFace,
     });
     setEditing(false);
+  };
+
+  const handleKick = async (player: RoomPlayer) => {
+    await kickPlayer(roomId, player.id);
+    toast.success(`${player.player_name} was kicked`);
   };
 
   return (
@@ -80,11 +86,6 @@ export function OnlineLobby({ roomCode, roomId, players, myPlayer, isHost, onSta
               const isMe = player.session_id === myPlayer?.session_id;
               const isPlayerHost = player.player_order === 0;
 
-              const handleKick = async () => {
-                await kickPlayer(roomId, player.id);
-                toast.success(`${player.player_name} was kicked`);
-              };
-
               return (
                 <motion.div
                   key={player.id}
@@ -106,17 +107,61 @@ export function OnlineLobby({ roomCode, roomId, players, myPlayer, isHost, onSta
                       <Pencil className="w-4 h-4" />
                     </Button>
                   )}
-                  {isHost && !isMe && (
-                    <Button size="icon" variant="ghost" onClick={handleKick} className="text-destructive">
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
                 </motion.div>
               );
             })}
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Host: Manage Players button */}
+      {isHost && players.length > 1 && (
+        <div className="w-full">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowManage(!showManage)}
+            className="w-full border-dashed border-2 border-secondary/40 text-secondary hover:bg-secondary/10"
+          >
+            <Shield className="w-4 h-4 mr-2" />
+            {showManage ? "Hide" : "Manage"} Players
+          </Button>
+
+          <AnimatePresence>
+            {showManage && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-3 bg-card border border-border rounded-xl p-4 space-y-2 overflow-hidden"
+              >
+                <p className="text-xs text-muted-foreground mb-2">Tap ✕ to kick a player</p>
+                {players
+                  .filter(p => p.session_id !== myPlayer?.session_id)
+                  .map(player => (
+                    <div
+                      key={player.id}
+                      className="flex items-center gap-3 rounded-lg p-2 border border-border"
+                    >
+                      <PlayerAvatar color={player.avatar_color} face={player.avatar_face} size="sm" />
+                      <span className="flex-1 font-display font-semibold text-foreground text-sm">
+                        {player.player_name}
+                      </span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleKick(player)}
+                        className="text-destructive hover:bg-destructive/10"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Edit my profile */}
       {editing && (
