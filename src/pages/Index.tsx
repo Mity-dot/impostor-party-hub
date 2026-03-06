@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { HomeScreen } from "@/components/HomeScreen";
 import { BotGame } from "@/components/BotGame";
 import { OnlineLobby } from "@/components/OnlineLobby";
@@ -8,8 +8,9 @@ import { OnlineWordReveal } from "@/components/OnlineWordReveal";
 import { OnlineCluePhase } from "@/components/OnlineCluePhase";
 import { OnlineVotingPhase } from "@/components/OnlineVotingPhase";
 import { OnlineResults } from "@/components/OnlineResults";
+import { RoundTransition } from "@/components/RoundTransition";
 import { useRoom } from "@/hooks/useRoom";
-import { startGame, advancePhase, submitClue, submitVote, resetForNewRound, leaveRoom } from "@/lib/roomService";
+import { startGame, advancePhase, submitClue, submitVote, resetForNewRound, leaveRoom, startNextRound } from "@/lib/roomService";
 import { CategoryData } from "@/lib/gameData";
 import { Skull, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,19 @@ const Index = () => {
   const [botMode, setBotMode] = useState(false);
 
   const { room, players, myPlayer, isHost, loading } = useRoom(roomId);
+
+  // Helpers to find next alive player index
+  const getNextAliveIndex = (currentIdx: number): number | null => {
+    for (let i = currentIdx + 1; i < players.length; i++) {
+      if (!players[i].eliminated) return i;
+    }
+    return null; // No more alive players after current
+  };
+
+  const getFirstAliveIndex = (): number => {
+    const idx = players.findIndex(p => !p.eliminated);
+    return idx >= 0 ? idx : 0;
+  };
 
   const handleRoomJoined = useCallback((id: string, code: string, host: boolean) => {
     setRoomId(id);
@@ -37,24 +51,27 @@ const Index = () => {
     if (!roomId || !room) return;
     const nextIndex = room.current_player_index + 1;
     if (nextIndex >= players.length) {
-      await advancePhase(roomId, "clue-phase", 0);
+      const firstAlive = getFirstAliveIndex();
+      await advancePhase(roomId, "clue-phase", firstAlive);
     } else {
       await advancePhase(roomId, "word-reveal", nextIndex);
     }
-  }, [roomId, room, players.length]);
+  }, [roomId, room, players]);
 
   const handleSubmitClue = useCallback(async (clue: string) => {
     if (!roomId || !room) return;
     const currentPlayer = players[room.current_player_index];
     if (!currentPlayer) return;
-    await submitClue(roomId, currentPlayer.id, clue, room.current_player_index + 1, players.length);
+    const nextAlive = getNextAliveIndex(room.current_player_index);
+    await submitClue(roomId, currentPlayer.id, clue, nextAlive);
   }, [roomId, room, players]);
 
   const handleVote = useCallback(async (votedForId: string) => {
     if (!roomId || !room) return;
     const currentVoter = players[room.current_player_index];
     if (!currentVoter) return;
-    await submitVote(roomId, currentVoter.id, votedForId, room.current_player_index + 1, players.length);
+    const nextAlive = getNextAliveIndex(room.current_player_index);
+    await submitVote(roomId, currentVoter.id, votedForId, nextAlive);
   }, [roomId, room, players]);
 
   const handlePlayAgain = useCallback(async () => {
@@ -71,6 +88,11 @@ const Index = () => {
   const handleStartGame = useCallback(async () => {
     if (!roomId) return;
     await advancePhase(roomId, "category-select", 0);
+  }, [roomId]);
+
+  const handleEliminationComplete = useCallback(async () => {
+    if (!roomId) return;
+    await startNextRound(roomId);
   }, [roomId]);
 
   // Bot mode
@@ -96,6 +118,10 @@ const Index = () => {
     );
   }
 
+  const alivePlayers = players.filter(p => !p.eliminated);
+  const eliminatedPlayer = players.find(p => p.eliminated && p.votes_received > 0 &&
+    p.votes_received === Math.max(...players.map(pp => pp.votes_received)));
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -109,7 +135,36 @@ const Index = () => {
           IMPOST<span className="text-secondary">O</span>R
         </h1>
         <span className="text-sm text-muted-foreground font-display ml-2">#{roomCode}</span>
+        {room.game_phase !== "lobby" && room.game_phase !== "category-select" && (
+          <span className="text-xs bg-muted rounded-full px-3 py-1 font-display text-muted-foreground ml-2">
+            Round {room.round_number} • {alivePlayers.length} alive
+          </span>
+        )}
       </motion.header>
+
+      {/* Elimination transition overlay */}
+      <AnimatePresence>
+        {room.game_phase === "elimination" && isHost && eliminatedPlayer && (
+          <RoundTransition
+            type="eliminated"
+            playerName={eliminatedPlayer.player_name}
+            playerColor={eliminatedPlayer.avatar_color}
+            playerFace={eliminatedPlayer.avatar_face}
+            message="They were innocent..."
+            onComplete={handleEliminationComplete}
+          />
+        )}
+        {room.game_phase === "elimination" && !isHost && (
+          <RoundTransition
+            type="eliminated"
+            playerName={eliminatedPlayer?.player_name || "Someone"}
+            playerColor={eliminatedPlayer?.avatar_color}
+            playerFace={eliminatedPlayer?.avatar_face}
+            message="Waiting for next round..."
+            onComplete={() => {}}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Game content */}
       <main className="flex-1 flex items-start justify-center py-4 pb-16">
@@ -174,7 +229,7 @@ const Index = () => {
       </main>
 
       {/* Quit */}
-      {room.game_phase !== "results" && (
+      {room.game_phase !== "results" && room.game_phase !== "elimination" && (
         <motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
