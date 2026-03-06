@@ -304,9 +304,9 @@ export function BotGame({ onExit }: { onExit: () => void }) {
               playerFace={eliminatedPlayer.avatarFace}
               message={
                 gameWinner === "civilians"
-                  ? "They were the Impostor! 🎉"
+                  ? "They were an Impostor! 🎉"
                   : gameWinner === "impostor"
-                  ? "They were innocent... The Impostor wins!"
+                  ? "They were innocent... The Impostors win!"
                   : "They were innocent..."
               }
               onComplete={handleEliminationComplete}
