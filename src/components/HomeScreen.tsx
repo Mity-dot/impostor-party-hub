@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skull, Plus, LogIn, Shuffle } from "lucide-react";
+import { Skull, Plus, LogIn, Shuffle, Bot } from "lucide-react";
 import { createRoom, joinRoom } from "@/lib/roomService";
 import { toast } from "sonner";
 
