@@ -80,6 +80,11 @@ export function OnlineLobby({ roomCode, roomId, players, myPlayer, isHost, onSta
               const isMe = player.session_id === myPlayer?.session_id;
               const isPlayerHost = player.player_order === 0;
 
+              const handleKick = async () => {
+                await kickPlayer(roomId, player.id);
+                toast.success(`${player.player_name} was kicked`);
+              };
+
               return (
                 <motion.div
                   key={player.id}
@@ -99,6 +104,11 @@ export function OnlineLobby({ roomCode, roomId, players, myPlayer, isHost, onSta
                   {isMe && !editing && (
                     <Button size="icon" variant="ghost" onClick={startEditing}>
                       <Pencil className="w-4 h-4" />
+                    </Button>
+                  )}
+                  {isHost && !isMe && (
+                    <Button size="icon" variant="ghost" onClick={handleKick} className="text-destructive">
+                      <X className="w-4 h-4" />
                     </Button>
                   )}
                 </motion.div>
