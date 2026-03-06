@@ -20,6 +20,7 @@ export type Database = {
           avatar_face: string
           clue: string | null
           created_at: string
+          eliminated: boolean
           id: string
           player_name: string
           player_order: number
@@ -35,6 +36,7 @@ export type Database = {
           avatar_face: string
           clue?: string | null
           created_at?: string
+          eliminated?: boolean
           id?: string
           player_name: string
           player_order?: number
@@ -50,6 +52,7 @@ export type Database = {
           avatar_face?: string
           clue?: string | null
           created_at?: string
+          eliminated?: boolean
           id?: string
           player_name?: string
           player_order?: number
@@ -82,6 +85,7 @@ export type Database = {
           impostor_player_id: string | null
           impostor_word: string | null
           room_code: string
+          round_number: number
         }
         Insert: {
           category_name?: string | null
@@ -94,6 +98,7 @@ export type Database = {
           impostor_player_id?: string | null
           impostor_word?: string | null
           room_code: string
+          round_number?: number
         }
         Update: {
           category_name?: string | null
@@ -106,6 +111,7 @@ export type Database = {
           impostor_player_id?: string | null
           impostor_word?: string | null
           room_code?: string
+          round_number?: number
         }
         Relationships: []
       }

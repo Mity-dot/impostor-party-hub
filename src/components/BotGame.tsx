@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { CategorySelect } from "@/components/CategorySelect";
+import { RoundTransition } from "@/components/RoundTransition";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,13 +10,14 @@ import {
 } from "@/lib/gameData";
 import { generateBotClue, generateBotVote } from "@/lib/botAI";
 import {
-  Skull, Bot, Play, Eye, EyeOff, ArrowRight, MessageCircle, Vote, Trophy, RotateCcw, Home, Minus, Plus, Pencil, Shuffle, Check,
+  Skull, Bot, Play, Eye, EyeOff, ArrowRight, MessageCircle, Vote, Trophy, RotateCcw, Home, Minus, Plus, Pencil, Shuffle, Check, UserX,
 } from "lucide-react";
 
-type Phase = "setup" | "category" | "reveal" | "clues" | "voting" | "results";
+type Phase = "setup" | "category" | "reveal" | "clues" | "voting" | "elimination" | "round-transition" | "results";
 
 interface BotPlayer extends Player {
   isBot: boolean;
+  eliminated?: boolean;
 }
 
 export function BotGame({ onExit }: { onExit: () => void }) {
@@ -36,9 +38,14 @@ export function BotGame({ onExit }: { onExit: () => void }) {
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState("");
   const [editFace, setEditFace] = useState("");
+  const [round, setRound] = useState(1);
+  const [eliminatedPlayer, setEliminatedPlayer] = useState<BotPlayer | null>(null);
+  const [gameWinner, setGameWinner] = useState<"civilians" | "impostor" | null>(null);
+  const [eliminatedPlayers, setEliminatedPlayers] = useState<BotPlayer[]>([]);
   const botTimerRef = useRef<NodeJS.Timeout>();
 
-  // Initialize human player
+  const alivePlayers = players.filter(p => !p.eliminated);
+
   useEffect(() => {
     resetNames();
     const p = createPlayer();
@@ -53,13 +60,15 @@ export function BotGame({ onExit }: { onExit: () => void }) {
       const bp = createPlayer(bots.map(b => b.name).concat([humanPlayer.name]));
       bots.push({ ...bp, isBot: true });
     }
-    const allPlayers = [{ ...humanPlayer, isBot: false }, ...bots];
-    // Shuffle order
+    const allPlayers = [{ ...humanPlayer, isBot: false } as BotPlayer, ...bots];
     for (let i = allPlayers.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allPlayers[i], allPlayers[j]] = [allPlayers[j], allPlayers[i]];
     }
     setPlayers(allPlayers);
+    setRound(1);
+    setEliminatedPlayers([]);
+    setGameWinner(null);
     setPhase("category");
   }, [humanPlayer, botCount]);
 
@@ -79,27 +88,40 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         clue: undefined,
         votedFor: undefined,
         votesReceived: 0,
+        eliminated: false,
       }));
     });
     setRevealed(false);
     setPhase("reveal");
   }, []);
 
+  // Get next alive player index for clue/vote phases
+  const getNextAliveIndex = (currentIdx: number, playerList: BotPlayer[]): number => {
+    let idx = currentIdx + 1;
+    while (idx < playerList.length && playerList[idx].eliminated) idx++;
+    return idx;
+  };
+
+  const getFirstAliveIndex = (playerList: BotPlayer[]): number => {
+    return playerList.findIndex(p => !p.eliminated);
+  };
+
   // Bot clue auto-play
   useEffect(() => {
     if (phase !== "clues") return;
     const current = players[clueIndex];
-    if (!current || !current.isBot) return;
+    if (!current || current.eliminated || !current.isBot) return;
 
     botTimerRef.current = setTimeout(() => {
       const usedClues = players.filter(p => p.clue).map(p => p.clue!.toLowerCase());
       const clue = generateBotClue(current.word!, usedClues);
       setPlayers(prev => prev.map((p, i) => i === clueIndex ? { ...p, clue } : p));
-      if (clueIndex + 1 >= players.length) {
-        setVoteIndex(0);
+      const nextIdx = getNextAliveIndex(clueIndex, players);
+      if (nextIdx >= players.length) {
+        setVoteIndex(getFirstAliveIndex(players));
         setPhase("voting");
       } else {
-        setClueIndex(prev => prev + 1);
+        setClueIndex(nextIdx);
       }
     }, 1200 + Math.random() * 800);
 
@@ -110,41 +132,83 @@ export function BotGame({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     if (phase !== "voting") return;
     const current = players[voteIndex];
-    if (!current || !current.isBot) return;
+    if (!current || current.eliminated || !current.isBot) return;
 
     botTimerRef.current = setTimeout(() => {
+      const alive = players.filter(p => !p.eliminated);
       const votedFor = generateBotVote(
         current.id,
         current.role as "civilian" | "impostor",
-        players.map(p => ({ id: p.id, clue: p.clue, role: p.role })),
+        alive.map(p => ({ id: p.id, clue: p.clue, role: p.role })),
         impostorId
       );
       setPlayers(prev => prev.map((p, i) => i === voteIndex ? { ...p, votedFor } : p));
-      if (voteIndex + 1 >= players.length) {
-        // Tally
-        setPlayers(prev => {
-          const voteCount: Record<string, number> = {};
-          prev.forEach(p => { if (p.votedFor) voteCount[p.votedFor] = (voteCount[p.votedFor] || 0) + 1; });
-          return prev.map(p => ({ ...p, votesReceived: voteCount[p.id] || 0 }));
-        });
-        setPhase("results");
+      const nextIdx = getNextAliveIndex(voteIndex, players);
+      if (nextIdx >= players.length) {
+        processVotes();
       } else {
-        setVoteIndex(prev => prev + 1);
+        setVoteIndex(nextIdx);
       }
     }, 800 + Math.random() * 600);
 
     return () => clearTimeout(botTimerRef.current);
   }, [phase, voteIndex, players, impostorId]);
 
+  const processVotes = () => {
+    setPlayers(prev => {
+      const alive = prev.filter(p => !p.eliminated);
+      const voteCount: Record<string, number> = {};
+      alive.forEach(p => { if (p.votedFor) voteCount[p.votedFor] = (voteCount[p.votedFor] || 0) + 1; });
+      
+      // Find most voted
+      let maxVotes = 0;
+      let mostVotedId: string | null = null;
+      let tie = false;
+      Object.entries(voteCount).forEach(([id, count]) => {
+        if (count > maxVotes) { maxVotes = count; mostVotedId = id; tie = false; }
+        else if (count === maxVotes) tie = true;
+      });
+
+      const updated = prev.map(p => ({ ...p, votesReceived: voteCount[p.id] || 0 }));
+      
+      if (!tie && mostVotedId) {
+        const eliminated = updated.find(p => p.id === mostVotedId)!;
+        setEliminatedPlayer({ ...eliminated });
+        
+        if (eliminated.id === impostorId) {
+          setGameWinner("civilians");
+          // Mark eliminated
+          return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+        } else {
+          // Check if impostor wins (only 2 alive = impostor + 1 civilian)
+          const remainingAlive = updated.filter(p => !p.eliminated && p.id !== mostVotedId);
+          if (remainingAlive.length <= 2) {
+            setGameWinner("impostor");
+            return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+          }
+          // Continue to next round
+          return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+        }
+      } else {
+        // Tie - no one eliminated, impostor survives = impostor wins
+        setEliminatedPlayer(null);
+        setGameWinner("impostor");
+      }
+      return updated;
+    });
+    setPhase("elimination");
+  };
+
   const submitHumanClue = () => {
     if (!humanClue.trim()) return;
     setPlayers(prev => prev.map((p, i) => i === clueIndex ? { ...p, clue: humanClue.trim() } : p));
     setHumanClue("");
-    if (clueIndex + 1 >= players.length) {
-      setVoteIndex(0);
+    const nextIdx = getNextAliveIndex(clueIndex, players);
+    if (nextIdx >= players.length) {
+      setVoteIndex(getFirstAliveIndex(players));
       setPhase("voting");
     } else {
-      setClueIndex(prev => prev + 1);
+      setClueIndex(nextIdx);
     }
   };
 
@@ -152,16 +216,30 @@ export function BotGame({ onExit }: { onExit: () => void }) {
     if (!selectedVote) return;
     setPlayers(prev => prev.map((p, i) => i === voteIndex ? { ...p, votedFor: selectedVote } : p));
     setSelectedVote(null);
-    if (voteIndex + 1 >= players.length) {
-      setPlayers(prev => {
-        const voteCount: Record<string, number> = {};
-        prev.forEach(p => { if (p.votedFor) voteCount[p.votedFor] = (voteCount[p.votedFor] || 0) + 1; });
-        return prev.map(p => ({ ...p, votesReceived: voteCount[p.id] || 0 }));
-      });
+    const nextIdx = getNextAliveIndex(voteIndex, players);
+    if (nextIdx >= players.length) {
+      processVotes();
+    } else {
+      setVoteIndex(nextIdx);
+    }
+  };
+
+  const handleEliminationComplete = () => {
+    if (gameWinner) {
       setPhase("results");
     } else {
-      setVoteIndex(prev => prev + 1);
+      // Next round
+      setRound(prev => prev + 1);
+      setPhase("round-transition");
     }
+  };
+
+  const handleRoundTransitionComplete = () => {
+    // Reset clues/votes for next round
+    setPlayers(prev => prev.map(p => ({ ...p, clue: undefined, votedFor: undefined, votesReceived: 0 })));
+    const firstAlive = players.findIndex(p => !p.eliminated);
+    setClueIndex(firstAlive >= 0 ? firstAlive : 0);
+    setPhase("clues");
   };
 
   const startEditing = () => {
@@ -183,19 +261,14 @@ export function BotGame({ onExit }: { onExit: () => void }) {
     setClueIndex(0);
     setVoteIndex(0);
     setRevealed(false);
+    setRound(1);
+    setEliminatedPlayers([]);
+    setGameWinner(null);
+    setEliminatedPlayer(null);
   };
 
   const me = players.find(p => !p.isBot);
-
-  // Determine results
-  const getMostVotedId = () => {
-    let max = 0; let id: string | null = null; let tie = false;
-    players.forEach(p => {
-      if ((p.votesReceived || 0) > max) { max = p.votesReceived || 0; id = p.id; tie = false; }
-      else if ((p.votesReceived || 0) === max && max > 0) tie = true;
-    });
-    return tie ? null : id;
-  };
+  const meEliminated = me?.eliminated;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -205,9 +278,49 @@ export function BotGame({ onExit }: { onExit: () => void }) {
           IMPOST<span className="text-secondary">O</span>R
         </h1>
         <span className="text-sm text-muted-foreground font-display ml-2">vs Bots</span>
+        {phase !== "setup" && phase !== "category" && phase !== "results" && (
+          <span className="text-xs bg-muted rounded-full px-3 py-1 font-display text-muted-foreground ml-2">
+            Round {round} • {alivePlayers.length} alive
+          </span>
+        )}
       </motion.header>
 
       <main className="flex-1 flex items-start justify-center py-4 pb-16">
+        {/* Elimination transition */}
+        <AnimatePresence>
+          {phase === "elimination" && eliminatedPlayer && (
+            <RoundTransition
+              type="eliminated"
+              playerName={eliminatedPlayer.name}
+              playerColor={eliminatedPlayer.avatarColor}
+              playerFace={eliminatedPlayer.avatarFace}
+              message={
+                gameWinner === "civilians"
+                  ? "They were the Impostor! 🎉"
+                  : gameWinner === "impostor"
+                  ? "They were innocent... The Impostor wins!"
+                  : "They were innocent..."
+              }
+              onComplete={handleEliminationComplete}
+            />
+          )}
+          {phase === "elimination" && !eliminatedPlayer && (
+            <RoundTransition
+              type="eliminated"
+              playerName="Nobody"
+              message="It's a tie! The Impostor escapes!"
+              onComplete={handleEliminationComplete}
+            />
+          )}
+          {phase === "round-transition" && (
+            <RoundTransition
+              type="new-round"
+              roundNumber={round}
+              onComplete={handleRoundTransitionComplete}
+            />
+          )}
+        </AnimatePresence>
+
         {/* SETUP */}
         {phase === "setup" && humanPlayer && (
           <div className="flex flex-col items-center gap-6 w-full max-w-md mx-auto px-4">
@@ -215,7 +328,6 @@ export function BotGame({ onExit }: { onExit: () => void }) {
               Play vs Bots
             </motion.h2>
 
-            {/* Your player */}
             <div className="w-full bg-card border border-border rounded-xl p-4">
               <p className="text-sm text-muted-foreground mb-3">Your Character</p>
               {editing ? (
@@ -246,7 +358,6 @@ export function BotGame({ onExit }: { onExit: () => void }) {
               )}
             </div>
 
-            {/* Bot count */}
             <div className="w-full bg-card border border-border rounded-xl p-4">
               <p className="text-sm text-muted-foreground mb-3">Number of Bots</p>
               <div className="flex items-center justify-center gap-4">
@@ -296,8 +407,8 @@ export function BotGame({ onExit }: { onExit: () => void }) {
             </AnimatePresence>
             {revealed && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-                <Button size="lg" onClick={() => { setClueIndex(0); setPhase("clues"); }} className="text-lg font-display px-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                  <ArrowRight className="w-5 h-5 mr-2" /> Start Clues!
+                <Button size="lg" onClick={() => { setClueIndex(getFirstAliveIndex(players)); setPhase("clues"); }} className="text-lg font-display px-8 bg-primary text-primary-foreground hover:bg-primary/90">
+                  <ArrowRight className="w-5 h-5 mr-2" /> Start Round 1!
                 </Button>
               </motion.div>
             )}
@@ -308,14 +419,27 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         {phase === "clues" && (
           <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4">
             <motion.h2 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-2xl font-display font-bold text-accent">
-              <MessageCircle className="inline w-6 h-6 mr-2" />Clue Time!
+              <MessageCircle className="inline w-6 h-6 mr-2" />Round {round} — Clues
             </motion.h2>
+
+            {/* Eliminated players strip */}
+            {players.filter(p => p.eliminated).length > 0 && (
+              <div className="flex gap-2 flex-wrap justify-center">
+                {players.filter(p => p.eliminated).map(p => (
+                  <div key={p.id} className="flex items-center gap-1 bg-destructive/10 rounded-full px-2 py-1 opacity-50">
+                    <PlayerAvatar color={p.avatarColor} face={p.avatarFace} size="sm" className="!w-5 !h-5 !text-xs grayscale" />
+                    <span className="text-xs text-muted-foreground line-through">{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Given clues */}
-            {players.filter(p => p.clue).length > 0 && (
+            {alivePlayers.filter(p => p.clue).length > 0 && (
               <div className="w-full space-y-2">
                 <p className="text-sm text-muted-foreground">Clues given:</p>
                 <div className="flex flex-wrap gap-2">
-                  {players.filter(p => p.clue).map(p => (
+                  {alivePlayers.filter(p => p.clue).map(p => (
                     <div key={p.id} className="flex items-center gap-2 bg-muted rounded-full px-3 py-1.5">
                       <PlayerAvatar color={p.avatarColor} face={p.avatarFace} size="sm" className="!w-6 !h-6 !text-sm" />
                       <span className="text-sm font-display text-foreground">{p.name}:</span>
@@ -326,14 +450,20 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                 </div>
               </div>
             )}
-            {/* Current */}
-            {players[clueIndex] && (
+
+            {/* Current player */}
+            {players[clueIndex] && !players[clueIndex].eliminated && (
               players[clueIndex].isBot ? (
                 <motion.div key={clueIndex} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-3 bg-card border border-border rounded-xl p-6 w-full">
                   <PlayerAvatar color={players[clueIndex].avatarColor} face={players[clueIndex].avatarFace} size="md" animate />
                   <p className="font-display text-foreground">{players[clueIndex].name} is thinking...</p>
                   <Bot className="w-5 h-5 text-muted-foreground animate-pulse-glow" />
                 </motion.div>
+              ) : meEliminated ? (
+                <div className="flex flex-col items-center gap-3 bg-card border border-destructive/30 rounded-xl p-6 w-full">
+                  <UserX className="w-8 h-8 text-destructive" />
+                  <p className="font-display text-destructive">You've been eliminated! Watching...</p>
+                </div>
               ) : (
                 <motion.div key={clueIndex} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-3 bg-card border border-border rounded-xl p-6 w-full">
                   <PlayerAvatar color={players[clueIndex].avatarColor} face={players[clueIndex].avatarFace} size="md" animate />
@@ -348,7 +478,6 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                 </motion.div>
               )
             )}
-            <p className="text-xs text-muted-foreground">Player {clueIndex + 1} of {players.length}</p>
           </div>
         )}
 
@@ -356,13 +485,14 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         {phase === "voting" && (
           <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4">
             <motion.h2 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-2xl font-display font-bold text-secondary text-glow-secondary">
-              <Vote className="inline w-6 h-6 mr-2" />Time to Vote!
+              <Vote className="inline w-6 h-6 mr-2" />Round {round} — Vote
             </motion.h2>
+
             {/* All clues */}
             <div className="w-full bg-card border border-border rounded-xl p-4">
               <p className="text-sm text-muted-foreground mb-3">All clues:</p>
               <div className="space-y-2">
-                {players.map(p => (
+                {alivePlayers.map(p => (
                   <div key={p.id} className="flex items-center gap-2">
                     <PlayerAvatar color={p.avatarColor} face={p.avatarFace} size="sm" className="!w-6 !h-6 !text-sm" />
                     <span className="font-display text-sm text-foreground">{p.name}:</span>
@@ -372,12 +502,17 @@ export function BotGame({ onExit }: { onExit: () => void }) {
               </div>
             </div>
 
-            {players[voteIndex] && (
+            {players[voteIndex] && !players[voteIndex].eliminated && (
               players[voteIndex].isBot ? (
                 <div className="flex flex-col items-center gap-3 bg-card border border-border rounded-xl p-6 w-full">
                   <PlayerAvatar color={players[voteIndex].avatarColor} face={players[voteIndex].avatarFace} size="md" />
                   <p className="font-display text-foreground">{players[voteIndex].name} is voting...</p>
                   <Bot className="w-5 h-5 text-muted-foreground animate-pulse-glow" />
+                </div>
+              ) : meEliminated ? (
+                <div className="flex flex-col items-center gap-3 bg-card border border-destructive/30 rounded-xl p-6 w-full">
+                  <UserX className="w-8 h-8 text-destructive" />
+                  <p className="font-display text-destructive">You're out! Watching the vote...</p>
                 </div>
               ) : (
                 <>
@@ -387,7 +522,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                     <p className="text-muted-foreground text-sm">Who is the Impostor?</p>
                   </div>
                   <div className="w-full grid grid-cols-2 gap-3">
-                    {players.filter(p => p.id !== players[voteIndex].id).map(p => (
+                    {alivePlayers.filter(p => p.id !== players[voteIndex].id).map(p => (
                       <motion.button key={p.id} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => setSelectedVote(p.id)}
                         className={`flex items-center gap-3 rounded-lg p-3 border-2 transition-colors ${selectedVote === p.id ? "border-destructive bg-destructive/10" : "border-border bg-card hover:border-muted-foreground/40"}`}
                       >
@@ -412,16 +547,14 @@ export function BotGame({ onExit }: { onExit: () => void }) {
 
         {/* RESULTS */}
         {phase === "results" && (() => {
-          const mostVotedId = getMostVotedId();
-          const civiliansWin = mostVotedId === impostorId;
           const impostor = players.find(p => p.id === impostorId);
           return (
             <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4 text-center">
               <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", duration: 0.8 }} className="flex flex-col items-center gap-3">
-                {civiliansWin ? (
-                  <><Trophy className="w-16 h-16 text-accent animate-float" /><h2 className="text-3xl font-display font-bold text-accent">Civilians Win! 🎉</h2></>
+                {gameWinner === "civilians" ? (
+                  <><Trophy className="w-16 h-16 text-accent animate-float" /><h2 className="text-3xl font-display font-bold text-accent">Civilians Win! 🎉</h2><p className="text-muted-foreground">The Impostor was found in Round {round}!</p></>
                 ) : (
-                  <><Skull className="w-16 h-16 text-secondary animate-float" /><h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">Impostor Wins! 🕵️</h2></>
+                  <><Skull className="w-16 h-16 text-secondary animate-float" /><h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">Impostor Wins! 🕵️</h2><p className="text-muted-foreground">The Impostor survived {round} round{round > 1 ? "s" : ""}!</p></>
                 )}
               </motion.div>
 
@@ -440,13 +573,14 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                 </div>
               </motion.div>
 
+              {/* Elimination timeline */}
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="w-full bg-card border border-border rounded-xl p-4">
-                <p className="text-sm text-muted-foreground mb-3">Vote Results:</p>
+                <p className="text-sm text-muted-foreground mb-3">Final Round Votes:</p>
                 <div className="space-y-2">
-                  {[...players].sort((a, b) => (b.votesReceived || 0) - (a.votesReceived || 0)).map(p => (
-                    <div key={p.id} className="flex items-center gap-3">
-                      <PlayerAvatar color={p.avatarColor} face={p.avatarFace} size="sm" className="!w-6 !h-6 !text-sm" />
-                      <span className="font-display text-sm text-foreground flex-1 text-left">{p.name}</span>
+                  {[...alivePlayers, ...players.filter(p => p.eliminated)].sort((a, b) => (b.votesReceived || 0) - (a.votesReceived || 0)).map(p => (
+                    <div key={p.id} className={`flex items-center gap-3 ${p.eliminated ? "opacity-50" : ""}`}>
+                      <PlayerAvatar color={p.avatarColor} face={p.avatarFace} size="sm" className={`!w-6 !h-6 !text-sm ${p.eliminated ? "grayscale" : ""}`} />
+                      <span className={`font-display text-sm text-foreground flex-1 text-left ${p.eliminated ? "line-through" : ""}`}>{p.name}</span>
                       {p.isBot && <Bot className="w-3 h-3 text-muted-foreground" />}
                       <div className="flex gap-1">{Array.from({ length: p.votesReceived || 0 }).map((_, i) => <span key={i} className="text-xs">🔴</span>)}</div>
                       <span className="text-sm text-muted-foreground w-8 text-right">{p.votesReceived || 0}</span>
@@ -469,7 +603,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         })()}
       </main>
 
-      {phase !== "results" && phase !== "setup" && (
+      {phase !== "results" && phase !== "setup" && phase !== "elimination" && phase !== "round-transition" && (
         <motion.footer initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed bottom-4 left-0 right-0 flex justify-center">
           <Button variant="ghost" size="sm" onClick={onExit} className="text-muted-foreground hover:text-destructive text-xs">Quit</Button>
         </motion.footer>

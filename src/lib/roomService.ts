@@ -169,62 +169,144 @@ export async function advancePhase(roomId: string, phase: string, playerIndex: n
     .eq("id", roomId);
 }
 
-export async function submitClue(roomId: string, playerId: string, clue: string, nextIndex: number, totalPlayers: number) {
+export async function submitClue(roomId: string, playerId: string, clue: string, nextAliveIndex: number | null) {
   await supabase
     .from("room_players")
     .update({ clue })
     .eq("id", playerId);
 
-  if (nextIndex >= totalPlayers) {
-    await advancePhase(roomId, "voting", 0);
+  if (nextAliveIndex === null) {
+    // All alive players have given clues, move to voting
+    const firstAlive = await getFirstAlivePlayerIndex(roomId);
+    await advancePhase(roomId, "voting", firstAlive);
   } else {
     await supabase
       .from("rooms")
-      .update({ current_player_index: nextIndex })
+      .update({ current_player_index: nextAliveIndex })
       .eq("id", roomId);
   }
 }
 
-export async function submitVote(roomId: string, voterId: string, votedForId: string, nextIndex: number, totalPlayers: number) {
+export async function submitVote(roomId: string, voterId: string, votedForId: string, nextAliveIndex: number | null) {
   await supabase
     .from("room_players")
     .update({ voted_for: votedForId })
     .eq("id", voterId);
 
-  if (nextIndex >= totalPlayers) {
-    // Tally votes
+  if (nextAliveIndex === null) {
+    // All alive players have voted - tally and eliminate
     const { data: players } = await supabase
       .from("room_players")
       .select("*")
-      .eq("room_id", roomId);
+      .eq("room_id", roomId)
+      .order("player_order");
 
-    if (players) {
-      const voteCount: Record<string, number> = {};
-      players.forEach(p => {
-        if (p.voted_for) {
-          voteCount[p.voted_for] = (voteCount[p.voted_for] || 0) + 1;
-        }
-      });
+    if (!players) return;
 
-      for (const p of players) {
-        await supabase
-          .from("room_players")
-          .update({ votes_received: voteCount[p.id] || 0 })
-          .eq("id", p.id);
-      }
+    const alivePlayers = players.filter(p => !p.eliminated);
+    const voteCount: Record<string, number> = {};
+    alivePlayers.forEach(p => {
+      if (p.voted_for) voteCount[p.voted_for] = (voteCount[p.voted_for] || 0) + 1;
+    });
+
+    // Update vote counts
+    for (const p of players) {
+      await supabase
+        .from("room_players")
+        .update({ votes_received: voteCount[p.id] || 0 })
+        .eq("id", p.id);
     }
 
-    await advancePhase(roomId, "results", 0);
+    // Find most voted
+    let maxVotes = 0;
+    let mostVotedId: string | null = null;
+    let tie = false;
+    Object.entries(voteCount).forEach(([id, count]) => {
+      if (count > maxVotes) { maxVotes = count; mostVotedId = id; tie = false; }
+      else if (count === maxVotes) tie = true;
+    });
+
+    // Get room data for impostor check
+    const { data: room } = await supabase
+      .from("rooms")
+      .select("*")
+      .eq("id", roomId)
+      .single();
+
+    if (!tie && mostVotedId) {
+      // Eliminate the player
+      await supabase
+        .from("room_players")
+        .update({ eliminated: true })
+        .eq("id", mostVotedId);
+
+      if (mostVotedId === room?.impostor_player_id) {
+        // Civilians win!
+        await advancePhase(roomId, "results", 0);
+      } else {
+        // Check if impostor wins (2 or fewer alive after elimination)
+        const remainingAlive = alivePlayers.filter(p => p.id !== mostVotedId);
+        if (remainingAlive.length <= 2) {
+          await advancePhase(roomId, "results", 0);
+        } else {
+          // Next round - go to elimination screen first
+          await advancePhase(roomId, "elimination", 0);
+        }
+      }
+    } else {
+      // Tie - impostor wins
+      await advancePhase(roomId, "results", 0);
+    }
   } else {
     await supabase
       .from("rooms")
-      .update({ current_player_index: nextIndex })
+      .update({ current_player_index: nextAliveIndex })
       .eq("id", roomId);
   }
 }
 
+async function getFirstAlivePlayerIndex(roomId: string): Promise<number> {
+  const { data } = await supabase
+    .from("room_players")
+    .select("player_order, eliminated")
+    .eq("room_id", roomId)
+    .order("player_order");
+  
+  if (!data) return 0;
+  const first = data.findIndex(p => !p.eliminated);
+  return first >= 0 ? first : 0;
+}
+
+export async function startNextRound(roomId: string) {
+  // Reset clues and votes for alive players, increment round
+  const { data: players } = await supabase
+    .from("room_players")
+    .select("id, eliminated")
+    .eq("room_id", roomId);
+
+  if (players) {
+    for (const p of players) {
+      if (!p.eliminated) {
+        await supabase
+          .from("room_players")
+          .update({ clue: null, voted_for: null, votes_received: 0 })
+          .eq("id", p.id);
+      }
+    }
+  }
+
+  // Get current round and increment
+  const { data: room } = await supabase.from("rooms").select("round_number").eq("id", roomId).single();
+  const nextRound = (room?.round_number || 1) + 1;
+
+  const firstAlive = await getFirstAlivePlayerIndex(roomId);
+  await supabase
+    .from("rooms")
+    .update({ game_phase: "clue-phase", current_player_index: firstAlive, round_number: nextRound })
+    .eq("id", roomId);
+}
+
 export async function resetForNewRound(roomId: string) {
-  // Reset players
   const { data: players } = await supabase
     .from("room_players")
     .select("id")
@@ -234,7 +316,7 @@ export async function resetForNewRound(roomId: string) {
     for (const p of players) {
       await supabase
         .from("room_players")
-        .update({ role: null, word: null, clue: null, voted_for: null, votes_received: 0 })
+        .update({ role: null, word: null, clue: null, voted_for: null, votes_received: 0, eliminated: false })
         .eq("id", p.id);
     }
   }
@@ -248,6 +330,7 @@ export async function resetForNewRound(roomId: string) {
       impostor_word: null,
       impostor_player_id: null,
       current_player_index: 0,
+      round_number: 1,
     })
     .eq("id", roomId);
 }
