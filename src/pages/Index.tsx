@@ -44,7 +44,11 @@ const Index = () => {
 
   const handleSelectCategory = useCallback(async (category: CategoryData) => {
     if (!roomId) return;
-    await startGame(roomId, category.name);
+    if (category.name === "Custom") {
+      await startGame(roomId, "Custom", category.words[0]);
+    } else {
+      await startGame(roomId, category.name);
+    }
   }, [roomId]);
 
   const handleAdvanceReveal = useCallback(async () => {

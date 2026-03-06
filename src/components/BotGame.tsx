@@ -377,7 +377,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                     <Bot key={i} className="w-6 h-6 text-accent" />
                   ))}
                 </div>
-                <Button size="icon" variant="outline" onClick={() => setBotCount(Math.min(9, botCount + 1))} disabled={botCount >= 9}>
+                <Button size="icon" variant="outline" onClick={() => setBotCount(Math.min(29, botCount + 1))} disabled={botCount >= 29}>
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
