@@ -357,14 +357,17 @@ export async function leaveRoom(roomId: string) {
     .eq("room_id", roomId)
     .eq("session_id", sessionId);
 
-  // Check if room is now empty, if so delete it to free the code
+  // Check if room is now empty — mark as abandoned instead of deleting
   const { count } = await supabase
     .from("room_players")
     .select("*", { count: "exact", head: true })
     .eq("room_id", roomId);
 
   if (count === 0) {
-    await supabase.from("rooms").delete().eq("id", roomId);
+    await supabase
+      .from("rooms")
+      .update({ abandoned_at: new Date().toISOString() })
+      .eq("id", roomId);
   }
 }
 
