@@ -18,8 +18,9 @@ interface OnlineVotingPhaseProps {
 
 export function OnlineVotingPhase({ room, players, myPlayer, onVote }: OnlineVotingPhaseProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const alivePlayers = players.filter(p => !p.eliminated);
   const currentVoter = players[room.current_player_index];
-  const isMyTurn = currentVoter?.session_id === sessionId;
+  const isMyTurn = currentVoter?.session_id === sessionId && !currentVoter?.eliminated;
 
   const handleSubmit = () => {
     if (selected) {
@@ -43,7 +44,7 @@ export function OnlineVotingPhase({ room, players, myPlayer, onVote }: OnlineVot
       <div className="w-full bg-card border border-border rounded-xl p-4">
         <p className="text-sm text-muted-foreground mb-3">All clues:</p>
         <div className="space-y-2">
-          {players.map(p => (
+          {alivePlayers.map(p => (
             <div key={p.id} className="flex items-center gap-2">
               <PlayerAvatar color={p.avatar_color} face={p.avatar_face} size="sm" className="!w-6 !h-6 !text-sm" />
               <span className="font-display text-sm text-foreground">{p.player_name}:</span>
@@ -62,7 +63,7 @@ export function OnlineVotingPhase({ room, players, myPlayer, onVote }: OnlineVot
           </div>
 
           <div className="w-full grid grid-cols-2 gap-3">
-            {players
+            {alivePlayers
               .filter(p => p.id !== myPlayer!.id)
               .map(p => (
                 <motion.button
