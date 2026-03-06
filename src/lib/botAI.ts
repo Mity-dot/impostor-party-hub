@@ -120,7 +120,7 @@ export function generateBotVote(
   botId: string,
   botRole: "civilian" | "impostor",
   players: { id: string; clue?: string; role?: string }[],
-  impostorId?: string
+  impostorIds?: string[]
 ): string {
   const others = players.filter(p => p.id !== botId);
   
@@ -132,10 +132,11 @@ export function generateBotVote(
     }
   }
   
-  // Civilians have a chance to detect the impostor
-  // 40% chance to correctly vote for impostor, 60% random
-  if (Math.random() < 0.4 && impostorId && impostorId !== botId) {
-    return impostorId;
+  // Civilians have a chance to detect an impostor
+  // 40% chance to correctly vote for an impostor, 60% random
+  const aliveImpostors = (impostorIds || []).filter(id => id !== botId && others.some(p => p.id === id));
+  if (Math.random() < 0.4 && aliveImpostors.length > 0) {
+    return aliveImpostors[Math.floor(Math.random() * aliveImpostors.length)];
   }
   
   // Random vote

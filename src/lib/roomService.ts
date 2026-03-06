@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { CATEGORIES, AVATAR_COLORS, AVATAR_FACES, generateUsername, resetNames } from "@/lib/gameData";
+import { getImpostorCount } from "@/lib/gameState";
 
 // Session ID persisted in localStorage
 function getSessionId(): string {
@@ -130,12 +131,19 @@ export async function startGame(roomId: string, categoryName: string) {
 
   if (!players || players.length < 3) throw new Error("Need at least 3 players");
 
-  // Pick impostor
-  const impostorIndex = Math.floor(Math.random() * players.length);
+  // Pick impostors based on player count
+  const count = getImpostorCount(players.length);
+  const indices = Array.from({ length: players.length }, (_, i) => i);
+  const impostorIndices: number[] = [];
+  for (let c = 0; c < count && indices.length > 0; c++) {
+    const pick = Math.floor(Math.random() * indices.length);
+    impostorIndices.push(indices[pick]);
+    indices.splice(pick, 1);
+  }
 
   // Assign roles to all players
   for (let i = 0; i < players.length; i++) {
-    const isImpostor = i === impostorIndex;
+    const isImpostor = impostorIndices.includes(i);
     await supabase
       .from("room_players")
       .update({
@@ -148,7 +156,7 @@ export async function startGame(roomId: string, categoryName: string) {
       .eq("id", players[i].id);
   }
 
-  // Update room
+  // Update room (impostor_player_id stores first impostor for backwards compat)
   await supabase
     .from("rooms")
     .update({
@@ -156,7 +164,7 @@ export async function startGame(roomId: string, categoryName: string) {
       category_name: categoryName,
       civilian_word: wordPair.civilian,
       impostor_word: wordPair.impostor,
-      impostor_player_id: players[impostorIndex].id,
+      impostor_player_id: players[impostorIndices[0]].id,
       current_player_index: 0,
     })
     .eq("id", roomId);
@@ -240,18 +248,20 @@ export async function submitVote(roomId: string, voterId: string, votedForId: st
         .update({ eliminated: true })
         .eq("id", mostVotedId);
 
-      if (mostVotedId === room?.impostor_player_id) {
-        // Civilians win!
+      // Check win conditions based on roles
+      const remainingAlive = alivePlayers.filter(p => p.id !== mostVotedId);
+      const aliveImpostors = remainingAlive.filter(p => p.role === "impostor");
+      const aliveCivilians = remainingAlive.filter(p => p.role === "civilian");
+
+      if (aliveImpostors.length === 0) {
+        // All impostors eliminated - civilians win
+        await advancePhase(roomId, "results", 0);
+      } else if (aliveCivilians.length <= aliveImpostors.length) {
+        // Impostors equal or outnumber civilians - impostors win
         await advancePhase(roomId, "results", 0);
       } else {
-        // Check if impostor wins (2 or fewer alive after elimination)
-        const remainingAlive = alivePlayers.filter(p => p.id !== mostVotedId);
-        if (remainingAlive.length <= 2) {
-          await advancePhase(roomId, "results", 0);
-        } else {
-          // Next round - go to elimination screen first
-          await advancePhase(roomId, "elimination", 0);
-        }
+        // Continue - go to elimination screen
+        await advancePhase(roomId, "elimination", 0);
       }
     } else {
       // Tie - impostor wins

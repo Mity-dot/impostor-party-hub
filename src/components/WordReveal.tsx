@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Player } from "@/lib/gameData";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Skull } from "lucide-react";
 
 interface WordRevealProps {
   players: Player[];
@@ -43,16 +43,23 @@ export function WordReveal({ players, currentPlayerIndex, onNext }: WordRevealPr
             initial={{ opacity: 0, rotateX: 90 }}
             animate={{ opacity: 1, rotateX: 0 }}
             exit={{ opacity: 0 }}
-            className="bg-card border-2 border-primary/40 rounded-xl p-6 w-full neon-glow-primary"
+            className={`bg-card border-2 rounded-xl p-6 w-full ${player.role === "impostor" ? "border-secondary/60 neon-glow-secondary" : "border-primary/40 neon-glow-primary"}`}
           >
-            <p className="text-sm text-muted-foreground mb-2">Your word is:</p>
-            <p className="text-3xl font-display font-bold text-primary text-glow-primary">
-              {player.word}
-            </p>
-            {player.role === "impostor" && (
-              <p className="text-xs text-secondary mt-2 text-glow-secondary">
-                You are the Impostor! 🕵️ Blend in!
-              </p>
+            {player.role === "impostor" ? (
+              <>
+                <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ duration: 0.5 }} className="mb-3">
+                  <Skull className="w-12 h-12 text-secondary mx-auto" />
+                </motion.div>
+                <p className="text-lg font-display font-bold text-secondary text-glow-secondary mb-2">You are an Impostor! 🕵️</p>
+                <p className="text-sm text-muted-foreground mb-2">Your word is:</p>
+                <p className="text-3xl font-display font-bold text-secondary text-glow-secondary">{player.word}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground mb-2">Your word is:</p>
+                <p className="text-3xl font-display font-bold text-primary text-glow-primary">{player.word}</p>
+                <p className="text-xs text-muted-foreground mt-2">You are a Civilian ✅</p>
+              </>
             )}
           </motion.div>
         ) : (

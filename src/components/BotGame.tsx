@@ -10,8 +10,9 @@ import {
 } from "@/lib/gameData";
 import { generateBotClue, generateBotVote } from "@/lib/botAI";
 import {
-  Skull, Bot, Play, Eye, EyeOff, ArrowRight, MessageCircle, Vote, Trophy, RotateCcw, Home, Minus, Plus, Pencil, Shuffle, Check, UserX,
+  Skull, Bot, Play, Eye, EyeOff, ArrowRight, MessageCircle, Vote, Trophy, RotateCcw, Home, Minus, Plus, Pencil, Shuffle, Check, UserX, Users,
 } from "lucide-react";
+import { getImpostorCount } from "@/lib/gameState";
 
 type Phase = "setup" | "category" | "reveal" | "clues" | "voting" | "elimination" | "round-transition" | "results";
 
@@ -28,7 +29,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
   const [category, setCategory] = useState<CategoryData | null>(null);
   const [civilianWord, setCivilianWord] = useState("");
   const [impostorWord, setImpostorWord] = useState("");
-  const [impostorId, setImpostorId] = useState("");
+  const [impostorIds, setImpostorIds] = useState<string[]>([]);
   const [revealed, setRevealed] = useState(false);
   const [clueIndex, setClueIndex] = useState(0);
   const [humanClue, setHumanClue] = useState("");
@@ -79,12 +80,19 @@ export function BotGame({ onExit }: { onExit: () => void }) {
     setImpostorWord(wordPair.impostor);
 
     setPlayers(prev => {
-      const impIdx = Math.floor(Math.random() * prev.length);
-      setImpostorId(prev[impIdx].id);
+      const count = getImpostorCount(prev.length);
+      const indices = Array.from({ length: prev.length }, (_, i) => i);
+      const impIndices: number[] = [];
+      for (let c = 0; c < count && indices.length > 0; c++) {
+        const pick = Math.floor(Math.random() * indices.length);
+        impIndices.push(indices[pick]);
+        indices.splice(pick, 1);
+      }
+      setImpostorIds(impIndices.map(i => prev[i].id));
       return prev.map((p, i) => ({
         ...p,
-        role: i === impIdx ? "impostor" as const : "civilian" as const,
-        word: i === impIdx ? wordPair.impostor : wordPair.civilian,
+        role: impIndices.includes(i) ? "impostor" as const : "civilian" as const,
+        word: impIndices.includes(i) ? wordPair.impostor : wordPair.civilian,
         clue: undefined,
         votedFor: undefined,
         votesReceived: 0,
@@ -140,7 +148,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         current.id,
         current.role as "civilian" | "impostor",
         alive.map(p => ({ id: p.id, clue: p.clue, role: p.role })),
-        impostorId
+        impostorIds
       );
       setPlayers(prev => prev.map((p, i) => i === voteIndex ? { ...p, votedFor } : p));
       const nextIdx = getNextAliveIndex(voteIndex, players);
@@ -152,7 +160,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
     }, 800 + Math.random() * 600);
 
     return () => clearTimeout(botTimerRef.current);
-  }, [phase, voteIndex, players, impostorId]);
+  }, [phase, voteIndex, players, impostorIds]);
 
   const processVotes = () => {
     setPlayers(prev => {
@@ -175,22 +183,22 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         const eliminated = updated.find(p => p.id === mostVotedId)!;
         setEliminatedPlayer({ ...eliminated });
         
-        if (eliminated.id === impostorId) {
+        const markedUpdated = updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+        const remainingAlive = markedUpdated.filter(p => !p.eliminated);
+        const aliveImpostors = remainingAlive.filter(p => impostorIds.includes(p.id));
+        const aliveCivilians = remainingAlive.filter(p => !impostorIds.includes(p.id));
+        
+        if (aliveImpostors.length === 0) {
+          // All impostors eliminated
           setGameWinner("civilians");
-          // Mark eliminated
-          return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
-        } else {
-          // Check if impostor wins (only 2 alive = impostor + 1 civilian)
-          const remainingAlive = updated.filter(p => !p.eliminated && p.id !== mostVotedId);
-          if (remainingAlive.length <= 2) {
-            setGameWinner("impostor");
-            return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
-          }
-          // Continue to next round
-          return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+        } else if (aliveCivilians.length <= aliveImpostors.length) {
+          // Impostors equal or outnumber civilians
+          setGameWinner("impostor");
         }
+        // Otherwise continue
+        return markedUpdated;
       } else {
-        // Tie - no one eliminated, impostor survives = impostor wins
+        // Tie - no one eliminated, impostor survives
         setEliminatedPlayer(null);
         setGameWinner("impostor");
       }
@@ -296,9 +304,9 @@ export function BotGame({ onExit }: { onExit: () => void }) {
               playerFace={eliminatedPlayer.avatarFace}
               message={
                 gameWinner === "civilians"
-                  ? "They were the Impostor! 🎉"
+                  ? "They were an Impostor! 🎉"
                   : gameWinner === "impostor"
-                  ? "They were innocent... The Impostor wins!"
+                  ? "They were innocent... The Impostors win!"
                   : "They were innocent..."
               }
               onComplete={handleEliminationComplete}
@@ -374,6 +382,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                 </Button>
               </div>
               <p className="text-center text-sm text-muted-foreground mt-2">{botCount} bots + you = {botCount + 1} players</p>
+              <p className="text-center text-xs text-secondary mt-1">🕵️ {getImpostorCount(botCount + 1)} impostor{getImpostorCount(botCount + 1) > 1 ? "s" : ""}</p>
             </div>
 
             <Button size="lg" onClick={startGame} className="text-lg font-display px-8 neon-glow-accent bg-accent text-accent-foreground hover:bg-accent/90">
@@ -392,10 +401,24 @@ export function BotGame({ onExit }: { onExit: () => void }) {
             <h3 className="text-2xl font-display font-bold text-foreground">{me.name}</h3>
             <AnimatePresence mode="wait">
               {revealed ? (
-                <motion.div key="word" initial={{ opacity: 0, rotateX: 90 }} animate={{ opacity: 1, rotateX: 0 }} className="bg-card border-2 border-primary/40 rounded-xl p-6 w-full neon-glow-primary">
-                  <p className="text-sm text-muted-foreground mb-2">Your word is:</p>
-                  <p className="text-3xl font-display font-bold text-primary text-glow-primary">{me.word}</p>
-                  {me.role === "impostor" && <p className="text-xs text-secondary mt-2 text-glow-secondary">You are the Impostor! 🕵️</p>}
+                <motion.div key="word" initial={{ opacity: 0, rotateX: 90 }} animate={{ opacity: 1, rotateX: 0 }} className={`bg-card border-2 rounded-xl p-6 w-full ${me.role === "impostor" ? "border-secondary/60 neon-glow-secondary" : "border-primary/40 neon-glow-primary"}`}>
+                  {me.role === "impostor" ? (
+                    <>
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ duration: 0.5 }} className="mb-3">
+                        <Skull className="w-12 h-12 text-secondary mx-auto" />
+                      </motion.div>
+                      <p className="text-lg font-display font-bold text-secondary text-glow-secondary mb-2">You are an Impostor! 🕵️</p>
+                      <p className="text-sm text-muted-foreground mb-2">Your word is:</p>
+                      <p className="text-3xl font-display font-bold text-secondary text-glow-secondary">{me.word}</p>
+                      {impostorIds.length > 1 && <p className="text-xs text-muted-foreground mt-2">There are {impostorIds.length} impostors this round. Blend in!</p>}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-2">Your word is:</p>
+                      <p className="text-3xl font-display font-bold text-primary text-glow-primary">{me.word}</p>
+                      <p className="text-xs text-muted-foreground mt-2">You are a Civilian ✅</p>
+                    </>
+                  )}
                 </motion.div>
               ) : (
                 <motion.div key="hidden" exit={{ opacity: 0 }}>
@@ -547,24 +570,28 @@ export function BotGame({ onExit }: { onExit: () => void }) {
 
         {/* RESULTS */}
         {phase === "results" && (() => {
-          const impostor = players.find(p => p.id === impostorId);
+          const impostors = players.filter(p => impostorIds.includes(p.id));
           return (
             <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4 text-center">
               <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", duration: 0.8 }} className="flex flex-col items-center gap-3">
                 {gameWinner === "civilians" ? (
-                  <><Trophy className="w-16 h-16 text-accent animate-float" /><h2 className="text-3xl font-display font-bold text-accent">Civilians Win! 🎉</h2><p className="text-muted-foreground">The Impostor was found in Round {round}!</p></>
+                  <><Trophy className="w-16 h-16 text-accent animate-float" /><h2 className="text-3xl font-display font-bold text-accent">Civilians Win! 🎉</h2><p className="text-muted-foreground">The Impostor{impostors.length > 1 ? "s were" : " was"} found in Round {round}!</p></>
                 ) : (
-                  <><Skull className="w-16 h-16 text-secondary animate-float" /><h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">Impostor Wins! 🕵️</h2><p className="text-muted-foreground">The Impostor survived {round} round{round > 1 ? "s" : ""}!</p></>
+                  <><Skull className="w-16 h-16 text-secondary animate-float" /><h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">Impostor{impostors.length > 1 ? "s" : ""} Win{impostors.length === 1 ? "s" : ""}! 🕵️</h2><p className="text-muted-foreground">The Impostor{impostors.length > 1 ? "s" : ""} survived {round} round{round > 1 ? "s" : ""}!</p></>
                 )}
               </motion.div>
 
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="w-full bg-card border border-border rounded-xl p-5 space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">The Impostor was:</p>
-                  <div className="flex items-center justify-center gap-3 mt-2">
-                    {impostor && <PlayerAvatar color={impostor.avatarColor} face={impostor.avatarFace} size="md" />}
-                    <span className="text-xl font-display font-bold text-secondary">{impostor?.name}</span>
-                    {impostor && !impostor.isBot && <span className="text-xs text-primary">(You!)</span>}
+                  <p className="text-sm text-muted-foreground">The Impostor{impostors.length > 1 ? "s were" : " was"}:</p>
+                  <div className="flex items-center justify-center gap-3 mt-2 flex-wrap">
+                    {impostors.map(imp => (
+                      <div key={imp.id} className="flex items-center gap-2">
+                        <PlayerAvatar color={imp.avatarColor} face={imp.avatarFace} size="md" />
+                        <span className="text-xl font-display font-bold text-secondary">{imp.name}</span>
+                        {!imp.isBot && <span className="text-xs text-primary">(You!)</span>}
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div className="border-t border-border pt-4 grid grid-cols-2 gap-4">
@@ -584,7 +611,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                       {p.isBot && <Bot className="w-3 h-3 text-muted-foreground" />}
                       <div className="flex gap-1">{Array.from({ length: p.votesReceived || 0 }).map((_, i) => <span key={i} className="text-xs">🔴</span>)}</div>
                       <span className="text-sm text-muted-foreground w-8 text-right">{p.votesReceived || 0}</span>
-                      {p.id === impostorId && <span className="text-xs text-secondary">🕵️</span>}
+                      {impostorIds.includes(p.id) && <span className="text-xs text-secondary">🕵️</span>}
                     </div>
                   ))}
                 </div>
