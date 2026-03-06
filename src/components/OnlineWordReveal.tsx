@@ -2,9 +2,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, ArrowRight, Clock, Skull } from "lucide-react";
+import { Eye, ArrowRight, Skull, CheckCircle } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
-import { sessionId } from "@/lib/roomService";
 
 type RoomPlayer = Database["public"]["Tables"]["room_players"]["Row"];
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
@@ -19,33 +18,6 @@ interface OnlineWordRevealProps {
 
 export function OnlineWordReveal({ room, players, myPlayer, isHost, onAdvance }: OnlineWordRevealProps) {
   const [revealed, setRevealed] = useState(false);
-  const currentPlayer = players[room.current_player_index];
-  const isMyTurn = currentPlayer?.session_id === sessionId;
-
-  if (!isMyTurn) {
-    return (
-      <div className="flex flex-col items-center gap-6 w-full max-w-md mx-auto px-4 text-center">
-        <Clock className="w-12 h-12 text-muted-foreground animate-pulse-glow" />
-        <h2 className="text-2xl font-display font-bold text-foreground">
-          Waiting for {currentPlayer?.player_name}...
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          Player {room.current_player_index + 1} of {players.length} is viewing their word
-        </p>
-        <div className="flex gap-2 flex-wrap justify-center">
-          {players.map((p, i) => (
-            <div key={p.id} className={`flex items-center gap-1 rounded-full px-3 py-1 ${
-              i < room.current_player_index ? "bg-primary/20" : i === room.current_player_index ? "bg-secondary/20 ring-1 ring-secondary" : "bg-muted"
-            }`}>
-              <PlayerAvatar color={p.avatar_color} face={p.avatar_face} size="sm" className="!w-5 !h-5 !text-xs" />
-              <span className="text-xs font-display text-foreground">{p.player_name}</span>
-              {i < room.current_player_index && <span className="text-xs">✓</span>}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-md mx-auto px-4 text-center">
@@ -54,7 +26,6 @@ export function OnlineWordReveal({ room, players, myPlayer, isHost, onAdvance }:
         animate={{ opacity: 1, scale: 1 }}
         className="flex flex-col items-center gap-4"
       >
-        <p className="text-muted-foreground text-sm">Your turn!</p>
         <PlayerAvatar color={myPlayer!.avatar_color} face={myPlayer!.avatar_face} size="lg" animate />
         <h3 className="text-2xl font-display font-bold text-foreground">{myPlayer!.player_name}</h3>
       </motion.div>
@@ -105,17 +76,24 @@ export function OnlineWordReveal({ room, players, myPlayer, isHost, onAdvance }:
         )}
       </AnimatePresence>
 
-      {revealed && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+      {revealed && isHost && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
           <Button
             size="lg"
             onClick={onAdvance}
             className="text-lg font-display px-8 bg-primary text-primary-foreground hover:bg-primary/90"
           >
-            <EyeOff className="w-5 h-5 mr-2" />
-            Got it!
-            <ArrowRight className="w-5 h-5 ml-2" />
+            Start Clues! <ArrowRight className="w-5 h-5 ml-2" />
           </Button>
+        </motion.div>
+      )}
+
+      {revealed && !isHost && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <CheckCircle className="w-5 h-5 text-primary" />
+            <p className="font-display text-sm">Waiting for host to start clues...</p>
+          </div>
         </motion.div>
       )}
     </div>

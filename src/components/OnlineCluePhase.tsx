@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, MessageCircle, Clock } from "lucide-react";
+import { ArrowRight, MessageCircle, Clock, Timer } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { sessionId } from "@/lib/roomService";
 
 type RoomPlayer = Database["public"]["Tables"]["room_players"]["Row"];
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
+
+const CLUE_TIME_LIMIT = 30;
 
 interface OnlineCluePhaseProps {
   room: Room;
@@ -19,17 +21,48 @@ interface OnlineCluePhaseProps {
 
 export function OnlineCluePhase({ room, players, myPlayer, onSubmitClue }: OnlineCluePhaseProps) {
   const [clue, setClue] = useState("");
+  const [timeLeft, setTimeLeft] = useState(CLUE_TIME_LIMIT);
   const alivePlayers = players.filter(p => !p.eliminated);
   const currentPlayer = players[room.current_player_index];
   const isMyTurn = currentPlayer?.session_id === sessionId && !currentPlayer?.eliminated;
   const givenClues = alivePlayers.filter(p => p.clue);
+  const timerRef = useRef<NodeJS.Timeout>();
+  const submittedRef = useRef(false);
+
+  // Reset timer when current player changes
+  useEffect(() => {
+    setTimeLeft(CLUE_TIME_LIMIT);
+    submittedRef.current = false;
+
+    if (isMyTurn) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            if (!submittedRef.current) {
+              submittedRef.current = true;
+              onSubmitClue("...");
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => clearInterval(timerRef.current);
+  }, [room.current_player_index, isMyTurn, onSubmitClue]);
 
   const handleSubmit = () => {
-    if (clue.trim()) {
+    if (clue.trim() && !submittedRef.current) {
+      submittedRef.current = true;
+      clearInterval(timerRef.current);
       onSubmitClue(clue.trim());
       setClue("");
     }
   };
+
+  const timerColor = timeLeft <= 5 ? "text-secondary" : timeLeft <= 10 ? "text-yellow-400" : "text-primary";
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4">
@@ -41,6 +74,14 @@ export function OnlineCluePhase({ room, players, myPlayer, onSubmitClue }: Onlin
         <MessageCircle className="inline w-6 h-6 mr-2" />
         Round {room.round_number} — Clues
       </motion.h2>
+
+      {/* Timer */}
+      <div className="flex items-center gap-2">
+        <Timer className={`w-5 h-5 ${timerColor}`} />
+        <span className={`text-2xl font-display font-bold ${timerColor} ${timeLeft <= 5 ? "animate-pulse" : ""}`}>
+          {timeLeft}s
+        </span>
+      </div>
 
       {givenClues.length > 0 && (
         <div className="w-full space-y-2">
