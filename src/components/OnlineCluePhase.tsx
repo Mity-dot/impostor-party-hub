@@ -10,7 +10,7 @@ import { sessionId } from "@/lib/roomService";
 type RoomPlayer = Database["public"]["Tables"]["room_players"]["Row"];
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
 
-const CLUE_TIME_LIMIT = 30;
+const CLUE_TIME_LIMIT = 20;
 
 interface OnlineCluePhaseProps {
   room: Room;
