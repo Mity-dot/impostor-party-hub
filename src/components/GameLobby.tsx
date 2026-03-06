@@ -136,7 +136,7 @@ export function GameLobby({ players, onUpdatePlayers, onStartGame }: GameLobbyPr
       </div>
 
       {/* Add player */}
-      {players.length < 10 && (
+      {players.length < 30 && (
         <Button onClick={addPlayer} variant="outline" className="w-full border-dashed border-2 border-primary/40 text-primary hover:bg-primary/10">
           <UserPlus className="w-5 h-5 mr-2" /> Add Player
         </Button>

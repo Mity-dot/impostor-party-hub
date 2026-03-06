@@ -116,11 +116,16 @@ export async function updatePlayerProfile(
     .eq("session_id", sessionId);
 }
 
-export async function startGame(roomId: string, categoryName: string) {
-  const category = CATEGORIES.find(c => c.name === categoryName);
-  if (!category) throw new Error("Category not found");
-
-  const wordPair = category.words[Math.floor(Math.random() * category.words.length)];
+export async function startGame(roomId: string, categoryName: string, customWords?: { civilian: string; impostor: string }) {
+  let wordPair: { civilian: string; impostor: string };
+  
+  if (customWords) {
+    wordPair = customWords;
+  } else {
+    const category = CATEGORIES.find(c => c.name === categoryName);
+    if (!category) throw new Error("Category not found");
+    wordPair = category.words[Math.floor(Math.random() * category.words.length)];
+  }
 
   // Get all players
   const { data: players } = await supabase
