@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, Pencil, Check, Shuffle, Copy, Users, Crown } from "lucide-react";
+import { Play, Pencil, Check, Shuffle, Copy, Users, Crown, X } from "lucide-react";
 import { AVATAR_COLORS, AVATAR_FACES, generateUsername } from "@/lib/gameData";
-import { updatePlayerProfile } from "@/lib/roomService";
+import { updatePlayerProfile, kickPlayer } from "@/lib/roomService";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 

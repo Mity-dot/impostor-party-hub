@@ -356,6 +356,14 @@ export async function resetForNewRound(roomId: string) {
     .eq("id", roomId);
 }
 
+export async function kickPlayer(roomId: string, playerId: string) {
+  await supabase
+    .from("room_players")
+    .delete()
+    .eq("id", playerId)
+    .eq("room_id", roomId);
+}
+
 export async function leaveRoom(roomId: string) {
   // Database trigger automatically sets abandoned_at when last player leaves
   await supabase
