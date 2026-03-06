@@ -52,15 +52,10 @@ const Index = () => {
   }, [roomId]);
 
   const handleAdvanceReveal = useCallback(async () => {
-    if (!roomId || !room) return;
-    const nextIndex = room.current_player_index + 1;
-    if (nextIndex >= players.length) {
-      const firstAlive = getFirstAliveIndex();
-      await advancePhase(roomId, "clue-phase", firstAlive);
-    } else {
-      await advancePhase(roomId, "word-reveal", nextIndex);
-    }
-  }, [roomId, room, players]);
+    if (!roomId) return;
+    const firstAlive = getFirstAliveIndex();
+    await advancePhase(roomId, "clue-phase", firstAlive);
+  }, [roomId, players]);
 
   const handleSubmitClue = useCallback(async (clue: string) => {
     if (!roomId || !room) return;
