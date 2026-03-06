@@ -1,0 +1,1 @@
+ALTER TABLE public.rooms ADD COLUMN abandoned_at timestamp with time zone DEFAULT NULL;

@@ -27,15 +27,21 @@ function generateRoomCode(): string {
 export async function createRoom(customCode?: string): Promise<string> {
   const code = (customCode || generateRoomCode()).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
   
-  // Check if code exists
+  // Check if code exists (ignore abandoned rooms)
   const { data: existing } = await supabase
     .from("rooms")
-    .select("id")
+    .select("id, abandoned_at")
     .eq("room_code", code)
     .maybeSingle();
 
   if (existing) {
-    throw new Error("Room code already in use. Try a different one!");
+    if (existing.abandoned_at) {
+      // Clean up the abandoned room so we can reuse the code
+      await supabase.from("room_players").delete().eq("room_id", existing.id);
+      await supabase.from("rooms").delete().eq("id", existing.id);
+    } else {
+      throw new Error("Room code already in use. Try a different one!");
+    }
   }
 
   const { data, error } = await supabase
@@ -357,14 +363,17 @@ export async function leaveRoom(roomId: string) {
     .eq("room_id", roomId)
     .eq("session_id", sessionId);
 
-  // Check if room is now empty, if so delete it to free the code
+  // Check if room is now empty — mark as abandoned instead of deleting
   const { count } = await supabase
     .from("room_players")
     .select("*", { count: "exact", head: true })
     .eq("room_id", roomId);
 
   if (count === 0) {
-    await supabase.from("rooms").delete().eq("id", roomId);
+    await supabase
+      .from("rooms")
+      .update({ abandoned_at: new Date().toISOString() })
+      .eq("id", roomId);
   }
 }
 
