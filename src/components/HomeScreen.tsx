@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 interface HomeScreenProps {
   onRoomJoined: (roomId: string, roomCode: string, isHost: boolean) => void;
+  onPlayBots: () => void;
 }
 
 export function HomeScreen({ onRoomJoined }: HomeScreenProps) {
