@@ -275,8 +275,8 @@ export async function submitVote(roomId: string, voterId: string, votedForId: st
         await advancePhase(roomId, "elimination", 0);
       }
     } else {
-      // Tie - impostor wins
-      await advancePhase(roomId, "results", 0);
+      // Tie - no one eliminated, continue to next round
+      await startNextRound(roomId);
     }
   } else {
     await supabase
