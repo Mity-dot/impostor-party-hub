@@ -16,7 +16,7 @@ interface OnlineResultsProps {
 }
 
 export function OnlineResults({ room, players, isHost, onPlayAgain, onLeave }: OnlineResultsProps) {
-  const impostor = players.find(p => p.id === room.impostor_player_id);
+  const impostors = players.filter(p => p.role === "impostor");
 
   // Determine winner
   let maxVotes = 0;
@@ -35,7 +35,8 @@ export function OnlineResults({ room, players, isHost, onPlayAgain, onLeave }: O
     }
   });
 
-  const civiliansWin = !tie && mostVotedId === room.impostor_player_id;
+  const aliveImpostors = players.filter(p => p.role === "impostor" && !p.eliminated);
+  const civiliansWin = aliveImpostors.length === 0;
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4 text-center">
@@ -54,7 +55,7 @@ export function OnlineResults({ room, players, isHost, onPlayAgain, onLeave }: O
           <>
             <Skull className="w-16 h-16 text-secondary animate-float" />
             <h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">
-              Impostor Wins! 🕵️
+              Impostor{impostors.length > 1 ? "s" : ""} Win{impostors.length === 1 ? "s" : ""}! 🕵️
             </h2>
             <p className="text-muted-foreground">{tie ? "It was a tie!" : "Wrong person voted!"}</p>
           </>
@@ -68,10 +69,14 @@ export function OnlineResults({ room, players, isHost, onPlayAgain, onLeave }: O
         className="w-full bg-card border border-border rounded-xl p-5 space-y-4"
       >
         <div>
-          <p className="text-sm text-muted-foreground">The Impostor was:</p>
-          <div className="flex items-center justify-center gap-3 mt-2">
-            {impostor && <PlayerAvatar color={impostor.avatar_color} face={impostor.avatar_face} size="md" />}
-            <span className="text-xl font-display font-bold text-secondary">{impostor?.player_name}</span>
+          <p className="text-sm text-muted-foreground">The Impostor{impostors.length > 1 ? "s were" : " was"}:</p>
+          <div className="flex items-center justify-center gap-3 mt-2 flex-wrap">
+            {impostors.map(imp => (
+              <div key={imp.id} className="flex items-center gap-2">
+                <PlayerAvatar color={imp.avatar_color} face={imp.avatar_face} size="md" />
+                <span className="text-xl font-display font-bold text-secondary">{imp.player_name}</span>
+              </div>
+            ))}
           </div>
         </div>
         <div className="border-t border-border pt-4 grid grid-cols-2 gap-4">
@@ -107,7 +112,7 @@ export function OnlineResults({ room, players, isHost, onPlayAgain, onLeave }: O
                   ))}
                 </div>
                 <span className="text-sm text-muted-foreground w-8 text-right">{p.votes_received}</span>
-                {p.id === room.impostor_player_id && <span className="text-xs text-secondary">🕵️</span>}
+                {p.role === "impostor" && <span className="text-xs text-secondary">🕵️</span>}
               </div>
             ))}
         </div>
