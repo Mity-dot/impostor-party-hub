@@ -14,7 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      room_players: {
+        Row: {
+          avatar_color: string
+          avatar_face: string
+          clue: string | null
+          created_at: string
+          id: string
+          player_name: string
+          player_order: number
+          role: string | null
+          room_id: string
+          session_id: string
+          voted_for: string | null
+          votes_received: number
+          word: string | null
+        }
+        Insert: {
+          avatar_color: string
+          avatar_face: string
+          clue?: string | null
+          created_at?: string
+          id?: string
+          player_name: string
+          player_order?: number
+          role?: string | null
+          room_id: string
+          session_id: string
+          voted_for?: string | null
+          votes_received?: number
+          word?: string | null
+        }
+        Update: {
+          avatar_color?: string
+          avatar_face?: string
+          clue?: string | null
+          created_at?: string
+          id?: string
+          player_name?: string
+          player_order?: number
+          role?: string | null
+          room_id?: string
+          session_id?: string
+          voted_for?: string | null
+          votes_received?: number
+          word?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_players_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          category_name: string | null
+          civilian_word: string | null
+          created_at: string
+          current_player_index: number
+          game_phase: string
+          host_session_id: string
+          id: string
+          impostor_player_id: string | null
+          impostor_word: string | null
+          room_code: string
+        }
+        Insert: {
+          category_name?: string | null
+          civilian_word?: string | null
+          created_at?: string
+          current_player_index?: number
+          game_phase?: string
+          host_session_id: string
+          id?: string
+          impostor_player_id?: string | null
+          impostor_word?: string | null
+          room_code: string
+        }
+        Update: {
+          category_name?: string | null
+          civilian_word?: string | null
+          created_at?: string
+          current_player_index?: number
+          game_phase?: string
+          host_session_id?: string
+          id?: string
+          impostor_player_id?: string | null
+          impostor_word?: string | null
+          room_code?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
