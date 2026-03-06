@@ -1,88 +1,93 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { GameLobby } from "@/components/GameLobby";
+import { HomeScreen } from "@/components/HomeScreen";
+import { OnlineLobby } from "@/components/OnlineLobby";
 import { CategorySelect } from "@/components/CategorySelect";
-import { WordReveal } from "@/components/WordReveal";
-import { CluePhase } from "@/components/CluePhase";
-import { VotingPhase } from "@/components/VotingPhase";
-import { GameResults } from "@/components/GameResults";
-import { Player, CategoryData, resetNames } from "@/lib/gameData";
-import { GameState, createInitialState, assignRoles, tallyVotes } from "@/lib/gameState";
-import { Skull } from "lucide-react";
+import { OnlineWordReveal } from "@/components/OnlineWordReveal";
+import { OnlineCluePhase } from "@/components/OnlineCluePhase";
+import { OnlineVotingPhase } from "@/components/OnlineVotingPhase";
+import { OnlineResults } from "@/components/OnlineResults";
+import { useRoom } from "@/hooks/useRoom";
+import { startGame, advancePhase, submitClue, submitVote, resetForNewRound, leaveRoom } from "@/lib/roomService";
+import { CategoryData } from "@/lib/gameData";
+import { Skull, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {
-  const [gameState, setGameState] = useState<GameState>(createInitialState());
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [roomCode, setRoomCode] = useState<string>("");
+  const [isHostState, setIsHostState] = useState(false);
 
-  const handleUpdatePlayers = useCallback((players: Player[]) => {
-    setGameState(prev => ({ ...prev, players }));
+  const { room, players, myPlayer, isHost, loading } = useRoom(roomId);
+
+  const handleRoomJoined = useCallback((id: string, code: string, host: boolean) => {
+    setRoomId(id);
+    setRoomCode(code);
+    setIsHostState(host);
   }, []);
 
-  const handleStartGame = useCallback(() => {
-    setGameState(prev => ({ ...prev, phase: "category-select" }));
-  }, []);
+  const handleSelectCategory = useCallback(async (category: CategoryData) => {
+    if (!roomId) return;
+    await startGame(roomId, category.name);
+  }, [roomId]);
 
-  const handleSelectCategory = useCallback((category: CategoryData) => {
-    setGameState(prev => assignRoles(prev, category));
-  }, []);
+  const handleAdvanceReveal = useCallback(async () => {
+    if (!roomId || !room) return;
+    const nextIndex = room.current_player_index + 1;
+    if (nextIndex >= players.length) {
+      await advancePhase(roomId, "clue-phase", 0);
+    } else {
+      await advancePhase(roomId, "word-reveal", nextIndex);
+    }
+  }, [roomId, room, players.length]);
 
-  const handleNextReveal = useCallback(() => {
-    setGameState(prev => {
-      const nextIndex = prev.currentPlayerIndex + 1;
-      if (nextIndex >= prev.players.length) {
-        return { ...prev, phase: "clue-phase", currentPlayerIndex: 0 };
-      }
-      return { ...prev, currentPlayerIndex: nextIndex };
-    });
-  }, []);
+  const handleSubmitClue = useCallback(async (clue: string) => {
+    if (!roomId || !room) return;
+    const currentPlayer = players[room.current_player_index];
+    if (!currentPlayer) return;
+    await submitClue(roomId, currentPlayer.id, clue, room.current_player_index + 1, players.length);
+  }, [roomId, room, players]);
 
-  const handleSubmitClue = useCallback((clue: string) => {
-    setGameState(prev => {
-      const players = prev.players.map((p, i) =>
-        i === prev.currentPlayerIndex ? { ...p, clue } : p
-      );
-      const nextIndex = prev.currentPlayerIndex + 1;
-      if (nextIndex >= players.length) {
-        return { ...prev, players, phase: "voting", currentPlayerIndex: 0 };
-      }
-      return { ...prev, players, currentPlayerIndex: nextIndex };
-    });
-  }, []);
+  const handleVote = useCallback(async (votedForId: string) => {
+    if (!roomId || !room) return;
+    const currentVoter = players[room.current_player_index];
+    if (!currentVoter) return;
+    await submitVote(roomId, currentVoter.id, votedForId, room.current_player_index + 1, players.length);
+  }, [roomId, room, players]);
 
-  const handleVote = useCallback((votedForId: string) => {
-    setGameState(prev => {
-      const players = prev.players.map((p, i) =>
-        i === prev.currentPlayerIndex ? { ...p, votedFor: votedForId } : p
-      );
-      const nextIndex = prev.currentPlayerIndex + 1;
-      if (nextIndex >= players.length) {
-        return tallyVotes({ ...prev, players });
-      }
-      return { ...prev, players, currentPlayerIndex: nextIndex };
-    });
-  }, []);
+  const handlePlayAgain = useCallback(async () => {
+    if (!roomId) return;
+    await resetForNewRound(roomId);
+  }, [roomId]);
 
-  const handlePlayAgain = useCallback(() => {
-    setGameState(prev => ({
-      ...prev,
-      phase: "category-select",
-      currentPlayerIndex: 0,
-      players: prev.players.map(p => ({
-        ...p,
-        role: undefined,
-        word: undefined,
-        clue: undefined,
-        votedFor: undefined,
-        votesReceived: 0,
-      })),
-      round: prev.round + 1,
-    }));
-  }, []);
+  const handleLeave = useCallback(async () => {
+    if (roomId) await leaveRoom(roomId);
+    setRoomId(null);
+    setRoomCode("");
+  }, [roomId]);
 
-  const handleNewGame = useCallback(() => {
-    resetNames();
-    setGameState(createInitialState());
-  }, []);
+  const handleStartGame = useCallback(async () => {
+    if (!roomId) return;
+    await advancePhase(roomId, "category-select", 0);
+  }, [roomId]);
+
+  // Not in a room yet
+  if (!roomId) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8">
+        <HomeScreen onRoomJoined={handleRoomJoined} />
+      </div>
+    );
+  }
+
+  // Loading room data
+  if (loading || !room) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -90,59 +95,79 @@ const Index = () => {
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-center gap-3 py-6"
+        className="flex items-center justify-center gap-3 py-4"
       >
-        <Skull className="w-8 h-8 text-secondary" />
-        <h1 className="text-4xl font-display font-bold text-foreground">
+        <Skull className="w-6 h-6 text-secondary" />
+        <h1 className="text-2xl font-display font-bold text-foreground">
           IMPOST<span className="text-secondary">O</span>R
         </h1>
-        <Skull className="w-8 h-8 text-secondary" />
+        <span className="text-sm text-muted-foreground font-display ml-2">#{roomCode}</span>
       </motion.header>
 
       {/* Game content */}
-      <main className="flex-1 flex items-start justify-center py-4 pb-12">
-        {gameState.phase === "lobby" && (
-          <GameLobby
-            players={gameState.players}
-            onUpdatePlayers={handleUpdatePlayers}
+      <main className="flex-1 flex items-start justify-center py-4 pb-16">
+        {room.game_phase === "lobby" && (
+          <OnlineLobby
+            roomCode={roomCode}
+            roomId={roomId}
+            players={players}
+            myPlayer={myPlayer}
+            isHost={isHost}
             onStartGame={handleStartGame}
           />
         )}
-        {gameState.phase === "category-select" && (
+        {room.game_phase === "category-select" && isHost && (
           <CategorySelect onSelect={handleSelectCategory} />
         )}
-        {gameState.phase === "word-reveal" && (
-          <WordReveal
-            players={gameState.players}
-            currentPlayerIndex={gameState.currentPlayerIndex}
-            onNext={handleNextReveal}
+        {room.game_phase === "category-select" && !isHost && (
+          <div className="flex flex-col items-center gap-4 text-center px-4">
+            <motion.p
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="text-xl font-display text-muted-foreground"
+            >
+              Host is picking a category...
+            </motion.p>
+          </div>
+        )}
+        {room.game_phase === "word-reveal" && (
+          <OnlineWordReveal
+            room={room}
+            players={players}
+            myPlayer={myPlayer}
+            isHost={isHost}
+            onAdvance={handleAdvanceReveal}
           />
         )}
-        {gameState.phase === "clue-phase" && (
-          <CluePhase
-            players={gameState.players}
-            currentPlayerIndex={gameState.currentPlayerIndex}
+        {room.game_phase === "clue-phase" && (
+          <OnlineCluePhase
+            room={room}
+            players={players}
+            myPlayer={myPlayer}
             onSubmitClue={handleSubmitClue}
           />
         )}
-        {gameState.phase === "voting" && (
-          <VotingPhase
-            players={gameState.players}
-            currentVoterIndex={gameState.currentPlayerIndex}
+        {room.game_phase === "voting" && (
+          <OnlineVotingPhase
+            room={room}
+            players={players}
+            myPlayer={myPlayer}
             onVote={handleVote}
           />
         )}
-        {gameState.phase === "results" && (
-          <GameResults
-            state={gameState}
+        {room.game_phase === "results" && (
+          <OnlineResults
+            room={room}
+            players={players}
+            isHost={isHost}
             onPlayAgain={handlePlayAgain}
-            onNewGame={handleNewGame}
+            onLeave={handleLeave}
           />
         )}
       </main>
 
-      {/* Footer */}
-      {gameState.phase !== "lobby" && gameState.phase !== "results" && (
+      {/* Quit */}
+      {room.game_phase !== "results" && (
         <motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -151,10 +176,10 @@ const Index = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleNewGame}
+            onClick={handleLeave}
             className="text-muted-foreground hover:text-destructive text-xs"
           >
-            Quit Game
+            Leave Room
           </Button>
         </motion.footer>
       )}
