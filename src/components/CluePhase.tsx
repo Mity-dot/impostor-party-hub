@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowRight, MessageCircle, Timer } from "lucide-react";
 
-const CLUE_TIME_LIMIT = 30; // seconds
+const CLUE_TIME_LIMIT = 20; // seconds
 
 interface CluePhaseProps {
   players: Player[];
