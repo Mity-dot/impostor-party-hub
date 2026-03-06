@@ -556,24 +556,28 @@ export function BotGame({ onExit }: { onExit: () => void }) {
 
         {/* RESULTS */}
         {phase === "results" && (() => {
-          const impostor = players.find(p => p.id === impostorId);
+          const impostors = players.filter(p => impostorIds.includes(p.id));
           return (
             <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4 text-center">
               <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", duration: 0.8 }} className="flex flex-col items-center gap-3">
                 {gameWinner === "civilians" ? (
-                  <><Trophy className="w-16 h-16 text-accent animate-float" /><h2 className="text-3xl font-display font-bold text-accent">Civilians Win! 🎉</h2><p className="text-muted-foreground">The Impostor was found in Round {round}!</p></>
+                  <><Trophy className="w-16 h-16 text-accent animate-float" /><h2 className="text-3xl font-display font-bold text-accent">Civilians Win! 🎉</h2><p className="text-muted-foreground">The Impostor{impostors.length > 1 ? "s were" : " was"} found in Round {round}!</p></>
                 ) : (
-                  <><Skull className="w-16 h-16 text-secondary animate-float" /><h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">Impostor Wins! 🕵️</h2><p className="text-muted-foreground">The Impostor survived {round} round{round > 1 ? "s" : ""}!</p></>
+                  <><Skull className="w-16 h-16 text-secondary animate-float" /><h2 className="text-3xl font-display font-bold text-secondary text-glow-secondary">Impostor{impostors.length > 1 ? "s" : ""} Win{impostors.length === 1 ? "s" : ""}! 🕵️</h2><p className="text-muted-foreground">The Impostor{impostors.length > 1 ? "s" : ""} survived {round} round{round > 1 ? "s" : ""}!</p></>
                 )}
               </motion.div>
 
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="w-full bg-card border border-border rounded-xl p-5 space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">The Impostor was:</p>
-                  <div className="flex items-center justify-center gap-3 mt-2">
-                    {impostor && <PlayerAvatar color={impostor.avatarColor} face={impostor.avatarFace} size="md" />}
-                    <span className="text-xl font-display font-bold text-secondary">{impostor?.name}</span>
-                    {impostor && !impostor.isBot && <span className="text-xs text-primary">(You!)</span>}
+                  <p className="text-sm text-muted-foreground">The Impostor{impostors.length > 1 ? "s were" : " was"}:</p>
+                  <div className="flex items-center justify-center gap-3 mt-2 flex-wrap">
+                    {impostors.map(imp => (
+                      <div key={imp.id} className="flex items-center gap-2">
+                        <PlayerAvatar color={imp.avatarColor} face={imp.avatarFace} size="md" />
+                        <span className="text-xl font-display font-bold text-secondary">{imp.name}</span>
+                        {!imp.isBot && <span className="text-xs text-primary">(You!)</span>}
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div className="border-t border-border pt-4 grid grid-cols-2 gap-4">
@@ -593,7 +597,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
                       {p.isBot && <Bot className="w-3 h-3 text-muted-foreground" />}
                       <div className="flex gap-1">{Array.from({ length: p.votesReceived || 0 }).map((_, i) => <span key={i} className="text-xs">🔴</span>)}</div>
                       <span className="text-sm text-muted-foreground w-8 text-right">{p.votesReceived || 0}</span>
-                      {p.id === impostorId && <span className="text-xs text-secondary">🕵️</span>}
+                      {impostorIds.includes(p.id) && <span className="text-xs text-secondary">🕵️</span>}
                     </div>
                   ))}
                 </div>
