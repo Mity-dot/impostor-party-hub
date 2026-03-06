@@ -19,9 +19,10 @@ interface OnlineCluePhaseProps {
 
 export function OnlineCluePhase({ room, players, myPlayer, onSubmitClue }: OnlineCluePhaseProps) {
   const [clue, setClue] = useState("");
+  const alivePlayers = players.filter(p => !p.eliminated);
   const currentPlayer = players[room.current_player_index];
-  const isMyTurn = currentPlayer?.session_id === sessionId;
-  const givenClues = players.filter(p => p.clue);
+  const isMyTurn = currentPlayer?.session_id === sessionId && !currentPlayer?.eliminated;
+  const givenClues = alivePlayers.filter(p => p.clue);
 
   const handleSubmit = () => {
     if (clue.trim()) {
