@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { HomeScreen } from "@/components/HomeScreen";
+import { BotGame } from "@/components/BotGame";
 import { OnlineLobby } from "@/components/OnlineLobby";
 import { CategorySelect } from "@/components/CategorySelect";
 import { OnlineWordReveal } from "@/components/OnlineWordReveal";
@@ -17,6 +18,7 @@ const Index = () => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string>("");
   const [isHostState, setIsHostState] = useState(false);
+  const [botMode, setBotMode] = useState(false);
 
   const { room, players, myPlayer, isHost, loading } = useRoom(roomId);
 
@@ -71,11 +73,16 @@ const Index = () => {
     await advancePhase(roomId, "category-select", 0);
   }, [roomId]);
 
+  // Bot mode
+  if (botMode) {
+    return <BotGame onExit={() => setBotMode(false)} />;
+  }
+
   // Not in a room yet
   if (!roomId) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8">
-        <HomeScreen onRoomJoined={handleRoomJoined} />
+        <HomeScreen onRoomJoined={handleRoomJoined} onPlayBots={() => setBotMode(true)} />
       </div>
     );
   }

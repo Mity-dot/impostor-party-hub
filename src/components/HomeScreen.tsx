@@ -2,15 +2,16 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skull, Plus, LogIn, Shuffle } from "lucide-react";
+import { Plus, LogIn, Bot, Skull } from "lucide-react";
 import { createRoom, joinRoom } from "@/lib/roomService";
 import { toast } from "sonner";
 
 interface HomeScreenProps {
   onRoomJoined: (roomId: string, roomCode: string, isHost: boolean) => void;
+  onPlayBots: () => void;
 }
 
-export function HomeScreen({ onRoomJoined }: HomeScreenProps) {
+export function HomeScreen({ onRoomJoined, onPlayBots }: HomeScreenProps) {
   const [mode, setMode] = useState<"home" | "create" | "join">("home");
   const [roomCode, setRoomCode] = useState("");
   const [customCode, setCustomCode] = useState("");
@@ -80,6 +81,19 @@ export function HomeScreen({ onRoomJoined }: HomeScreenProps) {
             className="text-xl font-display h-16 neon-glow-secondary bg-secondary text-secondary-foreground hover:bg-secondary/90"
           >
             <LogIn className="w-6 h-6 mr-3" /> Join Room
+          </Button>
+          <div className="relative flex items-center justify-center my-1">
+            <div className="border-t border-border flex-1" />
+            <span className="px-3 text-xs text-muted-foreground">or</span>
+            <div className="border-t border-border flex-1" />
+          </div>
+          <Button
+            size="lg"
+            onClick={onPlayBots}
+            variant="outline"
+            className="text-xl font-display h-16 border-accent/40 text-accent hover:bg-accent/10"
+          >
+            <Bot className="w-6 h-6 mr-3" /> Play vs Bots
           </Button>
         </motion.div>
       )}
