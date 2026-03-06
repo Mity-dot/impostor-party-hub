@@ -10,8 +10,9 @@ import {
 } from "@/lib/gameData";
 import { generateBotClue, generateBotVote } from "@/lib/botAI";
 import {
-  Skull, Bot, Play, Eye, EyeOff, ArrowRight, MessageCircle, Vote, Trophy, RotateCcw, Home, Minus, Plus, Pencil, Shuffle, Check, UserX,
+  Skull, Bot, Play, Eye, EyeOff, ArrowRight, MessageCircle, Vote, Trophy, RotateCcw, Home, Minus, Plus, Pencil, Shuffle, Check, UserX, Users,
 } from "lucide-react";
+import { getImpostorCount } from "@/lib/gameState";
 
 type Phase = "setup" | "category" | "reveal" | "clues" | "voting" | "elimination" | "round-transition" | "results";
 
@@ -28,7 +29,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
   const [category, setCategory] = useState<CategoryData | null>(null);
   const [civilianWord, setCivilianWord] = useState("");
   const [impostorWord, setImpostorWord] = useState("");
-  const [impostorId, setImpostorId] = useState("");
+  const [impostorIds, setImpostorIds] = useState<string[]>([]);
   const [revealed, setRevealed] = useState(false);
   const [clueIndex, setClueIndex] = useState(0);
   const [humanClue, setHumanClue] = useState("");
@@ -79,12 +80,19 @@ export function BotGame({ onExit }: { onExit: () => void }) {
     setImpostorWord(wordPair.impostor);
 
     setPlayers(prev => {
-      const impIdx = Math.floor(Math.random() * prev.length);
-      setImpostorId(prev[impIdx].id);
+      const count = getImpostorCount(prev.length);
+      const indices = Array.from({ length: prev.length }, (_, i) => i);
+      const impIndices: number[] = [];
+      for (let c = 0; c < count && indices.length > 0; c++) {
+        const pick = Math.floor(Math.random() * indices.length);
+        impIndices.push(indices[pick]);
+        indices.splice(pick, 1);
+      }
+      setImpostorIds(impIndices.map(i => prev[i].id));
       return prev.map((p, i) => ({
         ...p,
-        role: i === impIdx ? "impostor" as const : "civilian" as const,
-        word: i === impIdx ? wordPair.impostor : wordPair.civilian,
+        role: impIndices.includes(i) ? "impostor" as const : "civilian" as const,
+        word: impIndices.includes(i) ? wordPair.impostor : wordPair.civilian,
         clue: undefined,
         votedFor: undefined,
         votesReceived: 0,
@@ -140,7 +148,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         current.id,
         current.role as "civilian" | "impostor",
         alive.map(p => ({ id: p.id, clue: p.clue, role: p.role })),
-        impostorId
+        impostorIds
       );
       setPlayers(prev => prev.map((p, i) => i === voteIndex ? { ...p, votedFor } : p));
       const nextIdx = getNextAliveIndex(voteIndex, players);
@@ -152,7 +160,7 @@ export function BotGame({ onExit }: { onExit: () => void }) {
     }, 800 + Math.random() * 600);
 
     return () => clearTimeout(botTimerRef.current);
-  }, [phase, voteIndex, players, impostorId]);
+  }, [phase, voteIndex, players, impostorIds]);
 
   const processVotes = () => {
     setPlayers(prev => {
@@ -175,22 +183,23 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         const eliminated = updated.find(p => p.id === mostVotedId)!;
         setEliminatedPlayer({ ...eliminated });
         
-        if (eliminated.id === impostorId) {
+        const isImpostor = impostorIds.includes(mostVotedId);
+        const markedUpdated = updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+        const remainingAlive = markedUpdated.filter(p => !p.eliminated);
+        const aliveImpostors = remainingAlive.filter(p => impostorIds.includes(p.id));
+        const aliveCivilians = remainingAlive.filter(p => !impostorIds.includes(p.id));
+        
+        if (aliveImpostors.length === 0) {
+          // All impostors eliminated
           setGameWinner("civilians");
-          // Mark eliminated
-          return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
-        } else {
-          // Check if impostor wins (only 2 alive = impostor + 1 civilian)
-          const remainingAlive = updated.filter(p => !p.eliminated && p.id !== mostVotedId);
-          if (remainingAlive.length <= 2) {
-            setGameWinner("impostor");
-            return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
-          }
-          // Continue to next round
-          return updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
+        } else if (aliveCivilians.length <= aliveImpostors.length) {
+          // Impostors equal or outnumber civilians
+          setGameWinner("impostor");
         }
+        // Otherwise continue
+        return markedUpdated;
       } else {
-        // Tie - no one eliminated, impostor survives = impostor wins
+        // Tie - no one eliminated, impostor survives
         setEliminatedPlayer(null);
         setGameWinner("impostor");
       }

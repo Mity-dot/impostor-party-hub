@@ -15,6 +15,7 @@ export interface GameState {
   civilianWord?: string;
   impostorWord?: string;
   impostorId?: string;
+  impostorIds?: string[];
   currentPlayerIndex: number;
   round: number;
 }
@@ -29,18 +30,35 @@ export function createInitialState(): GameState {
   };
 }
 
+export function getImpostorCount(playerCount: number): number {
+  if (playerCount <= 5) return 1;
+  if (playerCount <= 10) return 2;
+  return Math.floor(playerCount / 5);
+}
+
 export function assignRoles(state: GameState, category: CategoryData): GameState {
   const wordPair = category.words[Math.floor(Math.random() * category.words.length)];
-  const impostorIndex = Math.floor(Math.random() * state.players.length);
+  const impostorCount = getImpostorCount(state.players.length);
+  
+  // Pick random impostor indices
+  const indices = Array.from({ length: state.players.length }, (_, i) => i);
+  const impostorIndices: number[] = [];
+  for (let i = 0; i < impostorCount && indices.length > 0; i++) {
+    const pick = Math.floor(Math.random() * indices.length);
+    impostorIndices.push(indices[pick]);
+    indices.splice(pick, 1);
+  }
   
   const players = state.players.map((p, i) => ({
     ...p,
-    role: (i === impostorIndex ? "impostor" : "civilian") as "civilian" | "impostor",
-    word: i === impostorIndex ? wordPair.impostor : wordPair.civilian,
+    role: (impostorIndices.includes(i) ? "impostor" : "civilian") as "civilian" | "impostor",
+    word: impostorIndices.includes(i) ? wordPair.impostor : wordPair.civilian,
     clue: undefined,
     votedFor: undefined,
     votesReceived: 0,
   }));
+
+  const impostorIds = impostorIndices.map(i => players[i].id);
 
   return {
     ...state,
@@ -48,7 +66,8 @@ export function assignRoles(state: GameState, category: CategoryData): GameState
     category,
     civilianWord: wordPair.civilian,
     impostorWord: wordPair.impostor,
-    impostorId: players[impostorIndex].id,
+    impostorId: impostorIds[0],
+    impostorIds,
     players,
     currentPlayerIndex: 0,
   };
@@ -90,5 +109,6 @@ export function getMostVoted(state: GameState): Player | null {
 
 export function didCiviliansWin(state: GameState): boolean {
   const mostVoted = getMostVoted(state);
-  return mostVoted?.id === state.impostorId;
+  const impostorIds = state.impostorIds || (state.impostorId ? [state.impostorId] : []);
+  return mostVoted ? impostorIds.includes(mostVoted.id) : false;
 }
