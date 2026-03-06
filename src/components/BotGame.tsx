@@ -183,7 +183,6 @@ export function BotGame({ onExit }: { onExit: () => void }) {
         const eliminated = updated.find(p => p.id === mostVotedId)!;
         setEliminatedPlayer({ ...eliminated });
         
-        const isImpostor = impostorIds.includes(mostVotedId);
         const markedUpdated = updated.map(p => p.id === mostVotedId ? { ...p, eliminated: true } : p);
         const remainingAlive = markedUpdated.filter(p => !p.eliminated);
         const aliveImpostors = remainingAlive.filter(p => impostorIds.includes(p.id));
