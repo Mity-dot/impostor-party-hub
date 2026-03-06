@@ -75,6 +75,7 @@ export type Database = {
       }
       rooms: {
         Row: {
+          abandoned_at: string | null
           category_name: string | null
           civilian_word: string | null
           created_at: string
@@ -88,6 +89,7 @@ export type Database = {
           round_number: number
         }
         Insert: {
+          abandoned_at?: string | null
           category_name?: string | null
           civilian_word?: string | null
           created_at?: string
@@ -101,6 +103,7 @@ export type Database = {
           round_number?: number
         }
         Update: {
+          abandoned_at?: string | null
           category_name?: string | null
           civilian_word?: string | null
           created_at?: string
