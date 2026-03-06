@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Player } from "@/lib/gameData";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { ArrowRight, MessageCircle, Timer } from "lucide-react";
+
+const CLUE_TIME_LIMIT = 30; // seconds
 
 interface CluePhaseProps {
   players: Player[];
@@ -14,17 +16,45 @@ interface CluePhaseProps {
 
 export function CluePhase({ players, currentPlayerIndex, onSubmitClue }: CluePhaseProps) {
   const [clue, setClue] = useState("");
+  const [timeLeft, setTimeLeft] = useState(CLUE_TIME_LIMIT);
   const player = players[currentPlayerIndex];
+  const timerRef = useRef<NodeJS.Timeout>();
+  const submittedRef = useRef(false);
 
-  // Show clues already given
+  // Reset timer when player changes
+  useEffect(() => {
+    setTimeLeft(CLUE_TIME_LIMIT);
+    submittedRef.current = false;
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          if (!submittedRef.current) {
+            submittedRef.current = true;
+            onSubmitClue("...");
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, [currentPlayerIndex, onSubmitClue]);
+
   const givenClues = players.filter(p => p.clue);
 
   const handleSubmit = () => {
-    if (clue.trim()) {
+    if (clue.trim() && !submittedRef.current) {
+      submittedRef.current = true;
+      clearInterval(timerRef.current);
       onSubmitClue(clue.trim());
       setClue("");
     }
   };
+
+  const timerColor = timeLeft <= 5 ? "text-secondary" : timeLeft <= 10 ? "text-yellow-400" : "text-primary";
 
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-lg mx-auto px-4">
@@ -37,7 +67,14 @@ export function CluePhase({ players, currentPlayerIndex, onSubmitClue }: CluePha
         Clue Time!
       </motion.h2>
 
-      {/* Previously given clues */}
+      {/* Timer */}
+      <div className="flex items-center gap-2">
+        <Timer className={`w-5 h-5 ${timerColor}`} />
+        <span className={`text-2xl font-display font-bold ${timerColor} ${timeLeft <= 5 ? "animate-pulse" : ""}`}>
+          {timeLeft}s
+        </span>
+      </div>
+
       {givenClues.length > 0 && (
         <div className="w-full space-y-2">
           <p className="text-sm text-muted-foreground">Clues given so far:</p>
@@ -53,7 +90,6 @@ export function CluePhase({ players, currentPlayerIndex, onSubmitClue }: CluePha
         </div>
       )}
 
-      {/* Current player */}
       <motion.div
         key={player.id}
         initial={{ opacity: 0, y: 20 }}
