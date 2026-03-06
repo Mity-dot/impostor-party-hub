@@ -37,7 +37,7 @@ export function OnlineVotingPhase({ room, players, myPlayer, onVote }: OnlineVot
         className="text-2xl font-display font-bold text-secondary text-glow-secondary"
       >
         <Vote className="inline w-6 h-6 mr-2" />
-        Time to Vote!
+        Round {room.round_number} — Vote!
       </motion.h2>
 
       {/* All clues */}

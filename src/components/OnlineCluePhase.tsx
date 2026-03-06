@@ -39,7 +39,7 @@ export function OnlineCluePhase({ room, players, myPlayer, onSubmitClue }: Onlin
         className="text-2xl font-display font-bold text-accent"
       >
         <MessageCircle className="inline w-6 h-6 mr-2" />
-        Clue Time!
+        Round {room.round_number} — Clues
       </motion.h2>
 
       {givenClues.length > 0 && (
